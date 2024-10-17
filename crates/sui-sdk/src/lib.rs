@@ -239,7 +239,9 @@ impl SuiClientBuilder {
                 builder = builder.ping_interval(duration)
             }
 
-            builder.build(url).await.ok()
+            let res = builder.build(url).await.ok();
+            println!("{:?}", res);
+            res
         } else {
             None
         };
