@@ -47,7 +47,7 @@ const WAIT_FOR_LOCAL_EXECUTION_INTERVAL: Duration = Duration::from_secs(2);
 /// The main read API structure with functions for retrieving data about different objects and transactions
 #[derive(Debug)]
 pub struct ReadApi {
-    api: Arc<RpcClient>,
+    pub api: Arc<RpcClient>,
 }
 
 impl ReadApi {
