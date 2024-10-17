@@ -429,13 +429,13 @@ impl SuiClientBuilder {
 /// ```
 #[derive(Clone)]
 pub struct SuiClient {
-    pub api: Arc<RpcClient>,
-    pub transaction_builder: TransactionBuilder,
-    pub read_api: Arc<ReadApi>,
-    pub coin_read_api: CoinReadApi,
-    pub event_api: EventApi,
-    pub quorum_driver_api: QuorumDriverApi,
-    pub governance_api: GovernanceApi,
+    api: Arc<RpcClient>,
+    transaction_builder: TransactionBuilder,
+    read_api: Arc<ReadApi>,
+    coin_read_api: CoinReadApi,
+    event_api: EventApi,
+    quorum_driver_api: QuorumDriverApi,
+    governance_api: GovernanceApi,
 }
 
 pub(crate) struct RpcClient {
