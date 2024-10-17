@@ -5802,7 +5802,6 @@ dependencies = [
  "rustls-native-certs 0.6.2",
  "tokio",
  "tokio-rustls 0.23.4",
- "webpki-roots 0.22.6",
 ]
 
 [[package]]
@@ -6335,8 +6334,8 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "jsonrpsee-core",
  "jsonrpsee-http-client",
@@ -6349,35 +6348,31 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-client-transport"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "futures-util",
  "http 0.2.9",
  "jsonrpsee-core",
- "jsonrpsee-types",
  "pin-project",
  "rustls-native-certs 0.6.2",
  "soketto",
  "thiserror",
  "tokio",
- "tokio-rustls 0.23.4",
+ "tokio-rustls 0.24.1",
  "tokio-util 0.7.10",
  "tracing",
- "webpki-roots 0.22.6",
 ]
 
 [[package]]
 name = "jsonrpsee-core"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "anyhow",
- "arrayvec 0.7.2",
  "async-lock",
  "async-trait",
  "beef",
- "futures-channel",
  "futures-timer",
  "futures-util",
  "globset",
@@ -6391,31 +6386,32 @@ dependencies = [
  "soketto",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
 [[package]]
 name = "jsonrpsee-http-client"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "async-trait",
  "hyper 0.14.26",
- "hyper-rustls 0.23.2",
+ "hyper-rustls 0.24.0",
  "jsonrpsee-core",
  "jsonrpsee-types",
- "rustc-hash 1.1.0",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
+ "tower",
  "tracing",
 ]
 
 [[package]]
 name = "jsonrpsee-proc-macros"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "heck 0.4.1",
  "proc-macro-crate",
@@ -6426,12 +6422,10 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-server"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
- "futures-channel",
  "futures-util",
- "http 0.2.9",
  "hyper 0.14.26",
  "jsonrpsee-core",
  "jsonrpsee-types",
@@ -6447,8 +6441,8 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-types"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "anyhow",
  "beef",
@@ -6460,8 +6454,8 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-ws-client"
-version = "0.16.2"
-source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
+version = "0.18.2"
+source = "git+https://github.com/romaz21/jsonrpsee.git#135807737d3645e573f1ca92ce4dc495b9bbdceb"
 dependencies = [
  "http 0.2.9",
  "jsonrpsee-client-transport",
@@ -17250,15 +17244,6 @@ checksum = "ed63aea5ce73d0ff405984102c42de94fc55a6b75765d621c65262469b3c9b53"
 dependencies = [
  "ring 0.17.8",
  "untrusted 0.9.0",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "0.22.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6c71e40d7d2c34a5106301fb632274ca37242cd0c9d3e64dbece371a40a2d87"
-dependencies = [
- "webpki",
 ]
 
 [[package]]
