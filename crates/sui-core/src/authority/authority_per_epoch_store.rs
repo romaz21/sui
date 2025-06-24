@@ -1692,7 +1692,6 @@ impl AuthorityPerEpochStore {
         &self,
         key: TransactionKey,
     ) -> Vec<VerifiedExecutableTransaction> {
-
         let rx = {
             let mut registrations = self.settlement_registrations.lock();
             if let Some(registration) = registrations.remove(&key) {

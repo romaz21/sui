@@ -270,9 +270,8 @@ impl ExecutionSchedulerAPI for ExecutionScheduler {
             let scheduler = self.clone();
             let epoch_store = epoch_store.clone();
 
-            spawn_monitored_task!(
-                epoch_store.clone().within_alive_epoch(async move {
-                    let mut futures: FuturesUnordered<_> =
+            spawn_monitored_task!(epoch_store.clone().within_alive_epoch(async move {
+                let mut futures: FuturesUnordered<_> =
                         settlement_txns
                             .into_iter()
                             .map(|(key, env)| {
@@ -283,15 +282,14 @@ impl ExecutionSchedulerAPI for ExecutionScheduler {
                             })
                             .collect();
 
-                    while let Some((txns, env)) = futures.next().await {
-                        let txns = txns
-                            .into_iter()
-                            .map(|tx| (tx, env.clone()))
-                            .collect::<Vec<_>>();
-                        scheduler.enqueue_transactions(txns, &epoch_store);
-                    }
-                })
-            );
+                while let Some((txns, env)) = futures.next().await {
+                    let txns = txns
+                        .into_iter()
+                        .map(|tx| (tx, env.clone()))
+                        .collect::<Vec<_>>();
+                    scheduler.enqueue_transactions(txns, &epoch_store);
+                }
+            }));
         }
     }
 
