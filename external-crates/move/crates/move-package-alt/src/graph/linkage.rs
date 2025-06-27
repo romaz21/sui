@@ -2,19 +2,18 @@
 // Copyright (c) The Move Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet};
 
-use move_core_types::account_address::AccountAddress;
 use petgraph::{
     algo::{Cycle, toposort},
-    graph::{DiGraph, NodeIndex},
+    graph::NodeIndex,
 };
 use thiserror::Error;
 
 use crate::{
     flavor::MoveFlavor,
     package::{Package, PackageName},
-    schema::Address,
+    schema::OriginalID,
 };
 
 use super::PackageGraph;
@@ -34,7 +33,7 @@ pub enum LinkageError {
 pub type LinkageResult<T> = Result<T, LinkageError>;
 
 /// Mapping from original ID to the package to use for that address
-pub type LinkageTable<F> = BTreeMap<AccountAddress, Package<F>>;
+pub type LinkageTable<F> = BTreeMap<OriginalID, Package<F>>;
 
 impl<F: MoveFlavor> PackageGraph<F> {
     /// Construct and return a linkage table for the root package of `self`
@@ -53,7 +52,7 @@ impl<F: MoveFlavor> PackageGraph<F> {
             .expect("all linkages have been computed"))
     }
 
-    fn overrides(&self, node: NodeIndex) -> BTreeSet<Address> {
+    fn overrides(&self, node: NodeIndex) -> BTreeSet<OriginalID> {
         todo!()
     }
 }
