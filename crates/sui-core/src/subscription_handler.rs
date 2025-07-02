@@ -83,25 +83,22 @@ impl SubscriptionHandler {
 }
 
 impl SubscriptionHandler {
-    #[instrument(level = "trace", skip_all, fields(tx_digest =? effects.transaction_digest()), err)]
+    #[instrument(level = "trace", skip_all, err)]
     pub fn process_tx(
         &self,
-        input: &TransactionData,
-        effects: &SuiTransactionBlockEffects,
         events: &SuiTransactionBlockEvents,
     ) -> SuiResult {
         trace!(
             num_events = events.data.len(),
-            tx_digest =? effects.transaction_digest(),
             "Processing tx/event subscription"
         );
 
-        if let Err(e) = self.transaction_streamer.try_send(EffectsWithInput {
-            input: input.clone(),
-            effects: effects.clone(),
-        }) {
-            error!(error =? e, "Failed to send transaction to dispatch");
-        }
+        // if let Err(e) = self.transaction_streamer.try_send(EffectsWithInput {
+        //     input: input.clone(),
+        //     effects: effects.clone(),
+        // }) {
+        //     error!(error =? e, "Failed to send transaction to dispatch");
+        // }
 
         // serially dispatch event processing to honor events' orders.
         for event in events.data.clone() {
