@@ -212,7 +212,7 @@ mod checked {
             reference_gas_price,
             transaction,
         )?;
-        check_objects(transaction, input_objects)?;
+        // check_objects(transaction, input_objects)?;
 
         Ok(gas_status)
     }

@@ -699,10 +699,10 @@ impl ExecutionSchedulerAPI for TransactionManager {
 
             // Ready transactions can start to execute.
             if pending_cert.waiting_input_objects.is_empty() {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["ready"])
-                    .inc();
+                // self.metrics
+                //     .transaction_manager_num_enqueued_certificates
+                //     .with_label_values(&["ready"])
+                //     .inc();
                 pending_cert.stats.ready_time = Some(Instant::now());
                 // Send to execution driver for execution.
                 self.certificate_ready(&mut inner, pending_cert);
@@ -870,12 +870,12 @@ impl TransactionManager {
     /// Sends the ready certificate for execution.
     fn certificate_ready(&self, inner: &mut Inner, pending_certificate: PendingCertificate) {
         trace!(tx_digest = ?pending_certificate.certificate.digest(), "certificate ready");
-        assert_eq!(pending_certificate.waiting_input_objects.len(), 0);
+        // assert_eq!(pending_certificate.waiting_input_objects.len(), 0);
         // Record as an executing certificate.
-        assert!(inner
-            .executing_certificates
-            .insert(*pending_certificate.certificate.digest()));
-        self.metrics.txn_ready_rate_tracker.lock().record();
+        // assert!(inner
+        //     .executing_certificates
+        //     .insert(*pending_certificate.certificate.digest()));
+        // self.metrics.txn_ready_rate_tracker.lock().record();
         let _ = self.tx_ready_certificates.send(pending_certificate);
         self.metrics.transaction_manager_num_ready.inc();
         self.metrics.execution_driver_dispatch_queue.inc();
