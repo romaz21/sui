@@ -1214,7 +1214,9 @@ impl CheckpointBuilder {
                 pending.roots,
             );
 
-            if self.epoch_store.accumulators_enabled() {
+            if let Some(TransactionKey::AccumulatorSettlement(..)) = pending.roots.last() {
+                assert!(self.epoch_store.accumulators_enabled());
+
                 let (tx_key, settlement_digests) = self
                     .construct_and_execute_settlement_transactions(
                         &sorted_tx_effects_included_in_checkpoint,
@@ -1225,10 +1227,7 @@ impl CheckpointBuilder {
 
                 let last_key = pending.roots.pop().unwrap();
                 assert_eq!(last_key, tx_key);
-                assert!(matches!(
-                    last_key,
-                    TransactionKey::AccumulatorSettlement(..)
-                ));
+
                 // Replace the key with the actual settlement digests
                 pending
                     .roots
@@ -1293,18 +1292,23 @@ impl CheckpointBuilder {
         self.epoch_store
             .notify_settlement_transactions_ready(tx_key, settlement_txns);
 
-        let settlement_effects = tokio::time::timeout(Duration::from_secs(10), async {
-            self.effects_store
-                .notify_read_executed_effects(&settlement_digests)
-                .await
-        })
-        .await
-        .unwrap_or_else(|_| {
-            fatal!(
-                "Timeout waiting for settlement transactions to be executed {:?}",
-                tx_key
-            );
-        });
+        let settlement_effects = loop {
+            match tokio::time::timeout(Duration::from_secs(5), async {
+                self.effects_store
+                    .notify_read_executed_effects(&settlement_digests)
+                    .await
+            })
+            .await
+            {
+                Ok(effects) => break effects,
+                Err(_) => {
+                    debug_fatal!(
+                        "Timeout waiting for settlement transactions to be executed {:?}, retrying...",
+                        tx_key
+                    );
+                }
+            }
+        };
 
         for fx in settlement_effects.iter() {
             assert!(
@@ -1694,7 +1698,7 @@ impl CheckpointBuilder {
 
         let signatures = self
             .epoch_store
-            .user_signatures_for_checkpoint(&transactions, &all_digests)?;
+            .user_signatures_for_checkpoint(&transactions, &all_digests);
         debug!(
             ?last_checkpoint_seq,
             "Received {} checkpoint user signatures from consensus",
