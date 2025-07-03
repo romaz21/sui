@@ -918,16 +918,19 @@ impl<S: Hash + Eq> Function<S> {
             match &def.code {
                 Some(code) if include_code => {
                     let locals = tables.signatures[code.locals.0 as usize].clone();
-                    let jump_tables = code.jump_tables.iter()
+                    let jump_tables = code
+                        .jump_tables
+                        .iter()
                         .map(|jt| Rc::new(VariantJumpTable::new(tables, jt)))
                         .collect::<Vec<_>>();
-                    let bytecode = code.code
+                    let bytecode = code
+                        .code
                         .iter()
                         .map(|bytecode| Bytecode::new(tables, pool, m, bytecode, &jump_tables))
                         .collect();
                     (locals, jump_tables, bytecode)
                 }
-                _ => (tables.empty_signature.clone(), vec![], vec![])
+                _ => (tables.empty_signature.clone(), vec![], vec![]),
             }
         };
         Function {
@@ -958,6 +961,7 @@ impl<S: Hash + Eq> Function<S> {
             is_entry,
             type_parameters,
             parameters,
+            locals,
             return_,
             code_included,
             jump_tables,
@@ -972,6 +976,7 @@ impl<S: Hash + Eq> Function<S> {
             && is_entry == &other.is_entry
             && type_parameters == &other.type_parameters
             && parameters == &other.parameters
+            && locals == &other.locals
             && return_ == &other.return_
             && vec_ordered_equivalent(jump_tables, &other.jump_tables, |j1, j2| j1.equivalent(j2))
             && vec_ordered_equivalent(code, &other.code, |b1, b2| b1.equivalent(b2))
