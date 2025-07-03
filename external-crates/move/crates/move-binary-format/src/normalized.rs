@@ -154,6 +154,7 @@ pub struct Function<S: Hash + Eq> {
     pub visibility: Visibility,
     pub is_entry: bool,
     pub type_parameters: Vec<AbilitySet>,
+    pub locals: Signature<S>,
     pub parameters: Signature<S>,
     pub return_: Signature<S>,
     code_included: bool,
@@ -913,26 +914,21 @@ impl<S: Hash + Eq> Function<S> {
     ) -> Self {
         let fhandle = m.function_handle_at(def.function);
         let name = pool.intern(m.identifier_at(fhandle.name));
-        let (jump_tables, code) = if include_code {
-            let jump_tables = def
-                .code
-                .iter()
-                .flat_map(|code| code.jump_tables.iter())
-                .map(|jt| Rc::new(VariantJumpTable::new(tables, jt)))
-                .collect::<Vec<_>>();
-            let code = def
-                .code
-                .as_ref()
-                .map(|code| {
-                    code.code
+        let (locals, jump_tables, code) = {
+            match &def.code {
+                Some(code) if include_code => {
+                    let locals = tables.signatures[code.locals.0 as usize].clone();
+                    let jump_tables = code.jump_tables.iter()
+                        .map(|jt| Rc::new(VariantJumpTable::new(tables, jt)))
+                        .collect::<Vec<_>>();
+                    let bytecode = code.code
                         .iter()
                         .map(|bytecode| Bytecode::new(tables, pool, m, bytecode, &jump_tables))
-                        .collect()
-                })
-                .unwrap_or_default();
-            (jump_tables, code)
-        } else {
-            (vec![], vec![])
+                        .collect();
+                    (locals, jump_tables, bytecode)
+                }
+                _ => (tables.empty_signature.clone(), vec![], vec![])
+            }
         };
         Function {
             name,
@@ -940,6 +936,7 @@ impl<S: Hash + Eq> Function<S> {
             is_entry: def.is_entry,
             type_parameters: fhandle.type_parameters.clone(),
             parameters: tables.signatures[fhandle.parameters.0 as usize].clone(),
+            locals,
             return_: tables.signatures[fhandle.return_.0 as usize].clone(),
             code_included: include_code,
             jump_tables,
