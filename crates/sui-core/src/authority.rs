@@ -2970,7 +2970,7 @@ impl AuthorityState {
 
         // Index tx
         if let Some(indexes) = &self.indexes {
-            let effects2: SuiTransactionBlockEffects = effects.clone().try_into()?;
+            // let effects2: SuiTransactionBlockEffects = effects.clone().try_into()?;
             let events2 = self.make_transaction_block_events(
                 events.clone(),
                 *tx_digest,
