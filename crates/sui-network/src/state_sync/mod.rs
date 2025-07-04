@@ -1020,20 +1020,20 @@ where
                         }
 
                         // peer gave us a checkpoint whose digest does not match pinned digest
-                        let checkpoint_digest = checkpoint.digest();
-                        if let Ok(pinned_digest_index) = pinned_checkpoints.binary_search_by_key(
-                            checkpoint.sequence_number(),
-                            |(seq_num, _digest)| *seq_num
-                        ) {
-                            if pinned_checkpoints[pinned_digest_index].1 != *checkpoint_digest {
-                                tracing::debug!(
-                                    "peer returned checkpoint with digest that does not match pinned digest: expected {:?}, got {:?}",
-                                    pinned_checkpoints[pinned_digest_index].1,
-                                    checkpoint_digest
-                                );
-                                continue;
-                            }
-                        }
+                        // let checkpoint_digest = checkpoint.digest();
+                        // if let Ok(pinned_digest_index) = pinned_checkpoints.binary_search_by_key(
+                        //     checkpoint.sequence_number(),
+                        //     |(seq_num, _digest)| *seq_num
+                        // ) {
+                        //     if pinned_checkpoints[pinned_digest_index].1 != *checkpoint_digest {
+                        //         tracing::debug!(
+                        //             "peer returned checkpoint with digest that does not match pinned digest: expected {:?}, got {:?}",
+                        //             pinned_checkpoints[pinned_digest_index].1,
+                        //             checkpoint_digest
+                        //         );
+                        //         continue;
+                        //     }
+                        // }
 
                         // Insert in our store in the event that things fail and we need to retry
                         peer_heights
@@ -1064,12 +1064,12 @@ where
                 anyhow::anyhow!("no peers were able to help sync checkpoint {next}")
             })?;
             // Skip verification for manually pinned checkpoints.
-            if pinned_checkpoints
-                .binary_search_by_key(checkpoint.sequence_number(), |(seq_num, _digest)| *seq_num)
-                .is_ok()
-            {
-                break 'cp VerifiedCheckpoint::new_unchecked(checkpoint);
-            }
+            // if pinned_checkpoints
+            //     .binary_search_by_key(checkpoint.sequence_number(), |(seq_num, _digest)| *seq_num)
+            //     .is_ok()
+            // {
+            //     break 'cp VerifiedCheckpoint::new_unchecked(checkpoint);
+            // }
             match verify_checkpoint(&current, &store, checkpoint) {
                 Ok(verified_checkpoint) => verified_checkpoint,
                 Err(checkpoint) => {
@@ -1344,15 +1344,15 @@ where
 
     // Check if we already have produced this checkpoint locally. If so, we don't need
     // to get it from peers anymore.
-    if store
-        .get_highest_synced_checkpoint()
-        .expect("store operation should not fail")
-        .sequence_number()
-        >= checkpoint.sequence_number()
-    {
-        debug!("checkpoint was already created via consensus output");
-        return Ok(checkpoint);
-    }
+    // if store
+    //     .get_highest_synced_checkpoint()
+    //     .expect("store operation should not fail")
+    //     .sequence_number()
+    //     >= checkpoint.sequence_number()
+    // {
+    //     debug!("checkpoint was already created via consensus output");
+    //     return Ok(checkpoint);
+    // }
 
     // Request checkpoint contents from peers.
     let peers = PeerBalancer::new(
@@ -1390,12 +1390,12 @@ async fn get_full_checkpoint_contents<S>(
 where
     S: WriteStore,
 {
-    let sequence_number = checkpoint.sequence_number;
+    // let sequence_number = checkpoint.sequence_number;
     let digest = checkpoint.content_digest;
-    if let Some(contents) = store.get_full_checkpoint_contents(Some(sequence_number), &digest) {
-        debug!("store already contains checkpoint contents");
-        return Some(contents);
-    }
+    // if let Some(contents) = store.get_full_checkpoint_contents(Some(sequence_number), &digest) {
+    //     debug!("store already contains checkpoint contents");
+    //     return Some(contents);
+    // }
 
     // Iterate through our selected peers trying each one in turn until we're able to
     // successfully get the target checkpoint
@@ -1414,13 +1414,11 @@ where
             .and_then(Response::into_inner)
             .tap_none(|| trace!("peer unable to help sync"))
         {
-            if contents.verify_digests(digest).is_ok() {
-                let verified_contents = VerifiedCheckpointContents::new_unchecked(contents.clone());
-                store
-                    .insert_checkpoint_contents(checkpoint, verified_contents)
-                    .expect("store operation should not fail");
-                return Some(contents);
-            }
+            let verified_contents = VerifiedCheckpointContents::new_unchecked(contents.clone());
+            store
+                .insert_checkpoint_contents(checkpoint, verified_contents)
+                .expect("store operation should not fail");
+            return Some(contents);
         }
     }
     debug!("no peers had checkpoint contents");
