@@ -652,28 +652,28 @@ impl ExecutionSchedulerAPI for TransactionManager {
 
             // skip already pending txes
             if inner.pending_certificates.contains_key(&digest) {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["already_pending"])
-                    .inc();
+                // self.metrics
+                //     .transaction_manager_num_enqueued_certificates
+                //     .with_label_values(&["already_pending"])
+                //     .inc();
                 continue;
             }
             // skip already executing txes
             if inner.executing_certificates.contains(&digest) {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["already_executing"])
-                    .inc();
+                // self.metrics
+                //     .transaction_manager_num_enqueued_certificates
+                //     .with_label_values(&["already_executing"])
+                //     .inc();
                 continue;
             }
             // skip already executed txes
             let is_tx_already_executed =
                 self.transaction_cache_read.is_tx_already_executed(&digest);
             if is_tx_already_executed {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["already_executed"])
-                    .inc();
+                // self.metrics
+                //     .transaction_manager_num_enqueued_certificates
+                //     .with_label_values(&["already_executed"])
+                //     .inc();
                 continue;
             }
 
@@ -719,18 +719,18 @@ impl ExecutionSchedulerAPI for TransactionManager {
                 digest
             );
 
-            self.metrics
-                .transaction_manager_num_enqueued_certificates
-                .with_label_values(&["pending"])
-                .inc();
+            // self.metrics
+            //     .transaction_manager_num_enqueued_certificates
+            //     .with_label_values(&["pending"])
+            //     .inc();
         }
 
-        self.metrics
-            .transaction_manager_num_missing_objects
-            .set(inner.missing_inputs.len() as i64);
-        self.metrics
-            .transaction_manager_num_pending_certificates
-            .set(inner.pending_certificates.len() as i64);
+        // self.metrics
+        //     .transaction_manager_num_missing_objects
+        //     .set(inner.missing_inputs.len() as i64);
+        // self.metrics
+        //     .transaction_manager_num_pending_certificates
+        //     .set(inner.pending_certificates.len() as i64);
 
         inner.maybe_reserve_capacity();
     }
@@ -861,15 +861,15 @@ impl TransactionManager {
             }
         }
 
-        self.metrics
-            .transaction_manager_num_missing_objects
-            .set(inner.missing_inputs.len() as i64);
-        self.metrics
-            .transaction_manager_num_pending_certificates
-            .set(inner.pending_certificates.len() as i64);
-        self.metrics
-            .transaction_manager_num_executing_certificates
-            .set(inner.executing_certificates.len() as i64);
+        // self.metrics
+        //     .transaction_manager_num_missing_objects
+        //     .set(inner.missing_inputs.len() as i64);
+        // self.metrics
+        //     .transaction_manager_num_pending_certificates
+        //     .set(inner.pending_certificates.len() as i64);
+        // self.metrics
+        //     .transaction_manager_num_executing_certificates
+        //     .set(inner.executing_certificates.len() as i64);
     }
 
     /// Sends the ready certificate for execution.
@@ -882,8 +882,8 @@ impl TransactionManager {
         //     .insert(*pending_certificate.certificate.digest()));
         // self.metrics.txn_ready_rate_tracker.lock().record();
         let _ = self.tx_ready_certificates.send(pending_certificate);
-        self.metrics.transaction_manager_num_ready.inc();
-        self.metrics.execution_driver_dispatch_queue.inc();
+        // self.metrics.transaction_manager_num_ready.inc();
+        // self.metrics.execution_driver_dispatch_queue.inc();
     }
 
     // Returns the number of transactions waiting on each object ID, as well as the age of the oldest transaction in the queue.

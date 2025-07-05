@@ -1445,7 +1445,7 @@ impl AuthorityState {
         // prevent concurrent executions of the same tx.
         let tx_guard = epoch_store.acquire_tx_guard(certificate)?;
 
-        let tx_cache_reader = self.get_transaction_cache_reader();
+        // let tx_cache_reader = self.get_transaction_cache_reader();
         // if epoch_store.protocol_config().mysticeti_fastpath()
         //     && !certificate.is_consensus_tx()
         //     && execution_env.scheduling_source == SchedulingSource::NonFastPath
@@ -1716,12 +1716,18 @@ impl AuthorityState {
         certificate: &VerifiedExecutableTransaction,
         execution_env: ExecutionEnv,
         epoch_store: &Arc<AuthorityPerEpochStore>,
+<<<<<<< HEAD
     ) -> SuiResult<(
         TransactionOutputs,
         Vec<ExecutionTiming>,
         Option<ExecutionError>,
     )> {
         let _scope = monitored_scope("Execution::process_certificate");
+=======
+        scheduling_source: SchedulingSource,
+    ) -> SuiResult<(TransactionEffects, Option<ExecutionError>)> {
+        // let process_certificate_start_time = tokio::time::Instant::now();
+>>>>>>> 9fccfc2178 (del me)
         let tx_digest = *certificate.digest();
 
         let input_objects = self.read_objects_for_execution(
@@ -1758,7 +1764,84 @@ impl AuthorityState {
             expected_effects_digest,
             execution_env.withdraw_status,
             epoch_store,
+<<<<<<< HEAD
         )
+=======
+        ) {
+            Err(e) => {
+                info!(name = ?self.name, ?tx_digest, "Error executing transaction: {e}");
+                tx_guard.release();
+                return Err(e);
+            }
+            Ok(res) => res,
+        };
+
+        fail_point!("crash");
+
+        let effects = transaction_outputs.effects.clone();
+        if scheduling_source == SchedulingSource::MysticetiFastPath {
+            self.get_cache_writer()
+                .write_fastpath_transaction_outputs(transaction_outputs.into());
+        } else {
+            let commit_result = self.commit_certificate(
+                certificate,
+                transaction_outputs,
+                epoch_store,
+            );
+            if let Err(err) = commit_result {
+                error!(?tx_digest, "Error committing transaction: {err}");
+                tx_guard.release();
+                return Err(err);
+            }
+
+            if let TransactionKind::AuthenticatorStateUpdate(auth_state) =
+                certificate.data().transaction_data().kind()
+            {
+                if let Some(err) = &execution_error_opt {
+                    debug_fatal!("Authenticator state update failed: {:?}", err);
+                }
+                epoch_store.update_authenticator_state(auth_state);
+
+                // double check that the signature verifier always matches the authenticator state
+                if cfg!(debug_assertions) {
+                    let authenticator_state = get_authenticator_state(self.get_object_store())
+                        .expect("Read cannot fail")
+                        .expect("Authenticator state must exist");
+
+                    let mut sys_jwks: Vec<_> = authenticator_state
+                        .active_jwks
+                        .into_iter()
+                        .map(|jwk| (jwk.jwk_id, jwk.jwk))
+                        .collect();
+                    let mut active_jwks: Vec<_> = epoch_store
+                        .signature_verifier
+                        .get_jwks()
+                        .into_iter()
+                        .collect();
+                    sys_jwks.sort();
+                    active_jwks.sort();
+
+                    assert_eq!(sys_jwks, active_jwks);
+                }
+            }
+        }
+        tx_guard.commit_tx();
+
+        epoch_store.record_local_execution_time(
+            certificate.data().transaction_data(),
+            &effects,
+            timings,
+            execution_start_time.elapsed(),
+        );
+
+        // let elapsed = process_certificate_start_time.elapsed().as_micros() as f64;
+        // if elapsed > 0.0 {
+        //     self.metrics
+        //         .execution_gas_latency_ratio
+        //         .observe(effects.gas_cost_summary().computation_cost as f64 / elapsed);
+        // };
+        Ok((effects, execution_error_opt))
+>>>>>>> 9fccfc2178 (del me)
     }
 
     pub async fn reconfigure_traffic_control(
@@ -1778,7 +1861,11 @@ impl AuthorityState {
     fn commit_certificate(
         &self,
         certificate: &VerifiedExecutableTransaction,
+<<<<<<< HEAD
         transaction_outputs: Arc<TransactionOutputs>,
+=======
+        transaction_outputs: TransactionOutputs,
+>>>>>>> 9fccfc2178 (del me)
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SuiResult {
         let _scope: Option<mysten_metrics::MonitoredScopeGuard> =
@@ -1888,7 +1975,7 @@ impl AuthorityState {
     )> {
         let _scope = monitored_scope("Execution::prepare_certificate");
         let _metrics_guard = self.metrics.prepare_certificate_latency.start_timer();
-        let prepare_certificate_start_time = tokio::time::Instant::now();
+        // let prepare_certificate_start_time = tokio::time::Instant::now();
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
         // let tx_data = certificate.data().transaction_data();
@@ -1997,7 +2084,7 @@ impl AuthorityState {
                 error!(?tx_digest, "tx post processing failed: {e}");
             });
 
-        self.update_metrics(certificate, &inner_temp_store, &effects);
+        // self.update_metrics(certificate, &inner_temp_store, &effects);
 
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
@@ -2005,16 +2092,16 @@ impl AuthorityState {
             inner_temp_store,
         );
 
-        let elapsed = prepare_certificate_start_time.elapsed().as_micros() as f64;
-        if elapsed > 0.0 {
-            self.metrics.prepare_cert_gas_latency_ratio.observe(
-                transaction_outputs
-                    .effects
-                    .gas_cost_summary()
-                    .computation_cost as f64
-                    / elapsed,
-            );
-        }
+        // let elapsed = prepare_certificate_start_time.elapsed().as_micros() as f64;
+        // if elapsed > 0.0 {
+        //     self.metrics.prepare_cert_gas_latency_ratio.observe(
+        //         transaction_outputs
+        //             .effects
+        //             .gas_cost_summary()
+        //             .computation_cost as f64
+        //             / elapsed,
+        //     );
+        // }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
     }
