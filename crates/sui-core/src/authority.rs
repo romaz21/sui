@@ -1364,7 +1364,7 @@ impl AuthorityState {
         // prevent concurrent executions of the same tx.
         let tx_guard = epoch_store.acquire_tx_guard(certificate)?;
 
-        let tx_cache_reader = self.get_transaction_cache_reader();
+        // let tx_cache_reader = self.get_transaction_cache_reader();
         // if epoch_store.protocol_config().mysticeti_fastpath()
         //     && !certificate.is_consensus_tx()
         //     && execution_env.scheduling_source == SchedulingSource::NonFastPath

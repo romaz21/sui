@@ -90,6 +90,7 @@ impl SubscriptionHandler {
     ) -> SuiResult {
         trace!(
             num_events = events.data.len(),
+            id=events.data[0].id.tx_digest.base58_encode(),
             "Processing tx/event subscription"
         );
 
