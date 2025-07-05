@@ -299,8 +299,8 @@ impl CheckpointExecutor {
             &self.metrics.checkpoint_contents_age,
             &self.metrics.checkpoint_contents_age_ms,
         );
-        self.backpressure_manager
-            .update_highest_certified_checkpoint(sequence_number);
+        // self.backpressure_manager
+        //     .update_highest_certified_checkpoint(sequence_number);
 
         if checkpoint.is_last_checkpoint_of_epoch() && sequence_number > 0 {
             let _wait_for_previous_checkpoints_guard = mysten_metrics::monitored_scope(
@@ -333,8 +333,8 @@ impl CheckpointExecutor {
         );
         self.metrics.checkpoint_exec_sync_tps.set(tps as i64);
 
-        self.backpressure_manager
-            .update_highest_executed_checkpoint(*ckpt_state.data.checkpoint.sequence_number());
+        // self.backpressure_manager
+        //     .update_highest_executed_checkpoint(*ckpt_state.data.checkpoint.sequence_number());
 
         let is_final_checkpoint = ckpt_state.data.checkpoint.is_last_checkpoint_of_epoch();
 
