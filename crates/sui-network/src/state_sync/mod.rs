@@ -963,7 +963,7 @@ async fn sync_to_checkpoint<S>(
 where
     S: WriteStore,
 {
-    metrics.set_highest_known_checkpoint(*checkpoint.sequence_number());
+    // metrics.set_highest_known_checkpoint(*checkpoint.sequence_number());
 
     let mut current = store
         .get_highest_verified_checkpoint()

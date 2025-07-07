@@ -1535,7 +1535,7 @@ impl AuthorityState {
         epoch_store: &Arc<AuthorityPerEpochStore>,
         scheduling_source: SchedulingSource,
     ) -> SuiResult<(TransactionEffects, Option<ExecutionError>)> {
-        let process_certificate_start_time = tokio::time::Instant::now();
+        // let process_certificate_start_time = tokio::time::Instant::now();
         let tx_digest = *certificate.digest();
 
         let _scope = monitored_scope("Execution::process_certificate");
@@ -1597,7 +1597,6 @@ impl AuthorityState {
             let commit_result = self.commit_certificate(
                 certificate,
                 transaction_outputs,
-                execution_guard,
                 epoch_store,
             );
             if let Err(err) = commit_result {
@@ -1646,12 +1645,12 @@ impl AuthorityState {
             execution_start_time.elapsed(),
         );
 
-        let elapsed = process_certificate_start_time.elapsed().as_micros() as f64;
-        if elapsed > 0.0 {
-            self.metrics
-                .execution_gas_latency_ratio
-                .observe(effects.gas_cost_summary().computation_cost as f64 / elapsed);
-        };
+        // let elapsed = process_certificate_start_time.elapsed().as_micros() as f64;
+        // if elapsed > 0.0 {
+        //     self.metrics
+        //         .execution_gas_latency_ratio
+        //         .observe(effects.gas_cost_summary().computation_cost as f64 / elapsed);
+        // };
         Ok((effects, execution_error_opt))
     }
 
@@ -1673,7 +1672,6 @@ impl AuthorityState {
         &self,
         certificate: &VerifiedExecutableTransaction,
         transaction_outputs: TransactionOutputs,
-        _execution_guard: ExecutionLockReadGuard<'_>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SuiResult {
         let _scope: Option<mysten_metrics::MonitoredScopeGuard> =
@@ -1782,7 +1780,7 @@ impl AuthorityState {
     )> {
         let _scope = monitored_scope("Execution::prepare_certificate");
         let _metrics_guard = self.metrics.prepare_certificate_latency.start_timer();
-        let prepare_certificate_start_time = tokio::time::Instant::now();
+        // let prepare_certificate_start_time = tokio::time::Instant::now();
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
         // let tx_data = certificate.data().transaction_data();
@@ -1879,7 +1877,7 @@ impl AuthorityState {
                 error!(?tx_digest, "tx post processing failed: {e}");
             });
 
-        self.update_metrics(certificate, &inner_temp_store, &effects);
+        // self.update_metrics(certificate, &inner_temp_store, &effects);
 
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
@@ -1887,16 +1885,16 @@ impl AuthorityState {
             inner_temp_store,
         );
 
-        let elapsed = prepare_certificate_start_time.elapsed().as_micros() as f64;
-        if elapsed > 0.0 {
-            self.metrics.prepare_cert_gas_latency_ratio.observe(
-                transaction_outputs
-                    .effects
-                    .gas_cost_summary()
-                    .computation_cost as f64
-                    / elapsed,
-            );
-        }
+        // let elapsed = prepare_certificate_start_time.elapsed().as_micros() as f64;
+        // if elapsed > 0.0 {
+        //     self.metrics.prepare_cert_gas_latency_ratio.observe(
+        //         transaction_outputs
+        //             .effects
+        //             .gas_cost_summary()
+        //             .computation_cost as f64
+        //             / elapsed,
+        //     );
+        // }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
     }
