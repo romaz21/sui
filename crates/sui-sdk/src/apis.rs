@@ -1061,10 +1061,10 @@ impl EventApi {
     pub async fn subscribe_event(
         &self,
         filter: EventFilter,
-    ) -> SuiRpcResult<impl Stream<Item = SuiRpcResult<SuiEvent>>> {
+    ) -> SuiRpcResult<impl Stream<Item = SuiRpcResult<Vec<SuiEvent>>>> {
         match &self.api.ws {
             Some(c) => {
-                let subscription: Subscription<SuiEvent> = c.subscribe_event(filter).await?;
+                let subscription: Subscription<Vec<SuiEvent>> = c.subscribe_event(filter).await?;
                 Ok(subscription.map(|item| Ok(item?)))
             }
             _ => Err(Error::Subscription(
