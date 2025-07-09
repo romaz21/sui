@@ -115,7 +115,7 @@ pub async fn execution_process(
                 return;
             }
 
-            fail_point_async!("transaction_execution_delay");
+            // fail_point_async!("transaction_execution_delay");
 
             match authority.try_execute_immediately(
                 &certificate,
