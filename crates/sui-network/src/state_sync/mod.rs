@@ -988,60 +988,66 @@ where
             let peers = peer_balancer.clone().with_checkpoint(next);
             let peer_heights = peer_heights.clone();
             let pinned_checkpoints = &pinned_checkpoints;
+            let checkpoint_copy = checkpoint.clone();
             async move {
-                if let Some(checkpoint) = peer_heights
-                    .read()
-                    .unwrap()
-                    .get_checkpoint_by_sequence_number(next)
-                {
-                    return (Some(checkpoint.to_owned()), next, None);
-                }
-
-                // Iterate through peers trying each one in turn until we're able to
-                // successfully get the target checkpoint
-                for mut peer in peers {
-                    let request = Request::new(GetCheckpointSummaryRequest::BySequenceNumber(next))
-                        .with_timeout(timeout);
-                    if let Some(checkpoint) = peer
-                        .get_checkpoint_summary(request)
-                        .await
-                        .tap_err(|e| trace!("{e:?}"))
-                        .ok()
-                        .and_then(Response::into_inner)
-                        .tap_none(|| trace!("peer unable to help sync"))
+                if next != *checkpoint_copy.sequence_number() {
+                    if let Some(checkpoint) = peer_heights
+                        .read()
+                        .unwrap()
+                        .get_checkpoint_by_sequence_number(next)
                     {
-                        // peer didn't give us a checkpoint with the height that we requested
-                        if *checkpoint.sequence_number() != next {
-                            tracing::debug!(
-                                "peer returned checkpoint with wrong sequence number: expected {next}, got {}",
-                                checkpoint.sequence_number()
-                            );
-                            continue;
-                        }
-
-                        // peer gave us a checkpoint whose digest does not match pinned digest
-                        // let checkpoint_digest = checkpoint.digest();
-                        // if let Ok(pinned_digest_index) = pinned_checkpoints.binary_search_by_key(
-                        //     checkpoint.sequence_number(),
-                        //     |(seq_num, _digest)| *seq_num
-                        // ) {
-                        //     if pinned_checkpoints[pinned_digest_index].1 != *checkpoint_digest {
-                        //         tracing::debug!(
-                        //             "peer returned checkpoint with digest that does not match pinned digest: expected {:?}, got {:?}",
-                        //             pinned_checkpoints[pinned_digest_index].1,
-                        //             checkpoint_digest
-                        //         );
-                        //         continue;
-                        //     }
-                        // }
-
-                        // Insert in our store in the event that things fail and we need to retry
-                        peer_heights
-                            .write()
-                            .unwrap()
-                            .insert_checkpoint(checkpoint.clone());
-                        return (Some(checkpoint), next, Some(peer.inner().peer_id()));
+                        return (Some(checkpoint.to_owned()), next, None);
                     }
+
+                    // Iterate through peers trying each one in turn until we're able to
+                    // successfully get the target checkpoint
+                    for mut peer in peers {
+                        let request = Request::new(GetCheckpointSummaryRequest::BySequenceNumber(next))
+                            .with_timeout(timeout);
+                        if let Some(checkpoint) = peer
+                            .get_checkpoint_summary(request)
+                            .await
+                            .tap_err(|e| trace!("{e:?}"))
+                            .ok()
+                            .and_then(Response::into_inner)
+                            .tap_none(|| trace!("peer unable to help sync"))
+                        {
+                            // peer didn't give us a checkpoint with the height that we requested
+                            if *checkpoint.sequence_number() != next {
+                                tracing::debug!(
+                                    "peer returned checkpoint with wrong sequence number: expected {next}, got {}",
+                                    checkpoint.sequence_number()
+                                );
+                                continue;
+                            }
+
+                            // peer gave us a checkpoint whose digest does not match pinned digest
+                            // let checkpoint_digest = checkpoint.digest();
+                            // if let Ok(pinned_digest_index) = pinned_checkpoints.binary_search_by_key(
+                            //     checkpoint.sequence_number(),
+                            //     |(seq_num, _digest)| *seq_num
+                            // ) {
+                            //     if pinned_checkpoints[pinned_digest_index].1 != *checkpoint_digest {
+                            //         tracing::debug!(
+                            //             "peer returned checkpoint with digest that does not match pinned digest: expected {:?}, got {:?}",
+                            //             pinned_checkpoints[pinned_digest_index].1,
+                            //             checkpoint_digest
+                            //         );
+                            //         continue;
+                            //     }
+                            // }
+
+                            // Insert in our store in the event that things fail and we need to retry
+                            peer_heights
+                                .write()
+                                .unwrap()
+                                .insert_checkpoint(checkpoint.clone());
+                            return (Some(checkpoint), next, Some(peer.inner().peer_id()));
+                        }
+                    }
+                } else {
+                    debug!(checkpoint_seq = ?checkpoint_copy.sequence_number(), "this checkpoint was already received");
+                    return (Some(checkpoint_copy), next, None);
                 }
                 (None, next, None)
             }
