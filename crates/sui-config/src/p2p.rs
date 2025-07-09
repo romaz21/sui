@@ -191,7 +191,7 @@ pub struct StateSyncConfig {
 
 impl StateSyncConfig {
     pub fn interval_period(&self) -> Duration {
-        const INTERVAL_PERIOD_MS: u64 = 100; // 100 ms
+        const INTERVAL_PERIOD_MS: u64 = 2_000; // 2000 ms
 
         Duration::from_millis(self.interval_period_ms.unwrap_or(INTERVAL_PERIOD_MS))
     }
