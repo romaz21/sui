@@ -688,10 +688,10 @@ where
                 self.store.clone(),
                 self.peer_heights.clone(),
                 self.metrics.clone(),
-                self.config.pinned_checkpoints.clone(),
                 self.config.checkpoint_header_download_concurrency(),
                 self.config.timeout(),
                 // The if condition should ensure that this is Some
+                highest_processed_checkpoint,
                 highest_known_checkpoint.unwrap(),
             )
             .map(|result| match result {
@@ -955,9 +955,9 @@ async fn sync_to_checkpoint<S>(
     store: S,
     peer_heights: Arc<RwLock<PeerHeights>>,
     metrics: Metrics,
-    pinned_checkpoints: Vec<(CheckpointSequenceNumber, CheckpointDigest)>,
     checkpoint_header_download_concurrency: usize,
     timeout: Duration,
+    mut current: VerifiedCheckpoint,
     checkpoint: Checkpoint,
 ) -> Result<()>
 where
@@ -965,9 +965,6 @@ where
 {
     // metrics.set_highest_known_checkpoint(*checkpoint.sequence_number());
 
-    let mut current = store
-        .get_highest_verified_checkpoint()
-        .expect("store operation should not fail");
     if current.sequence_number() >= checkpoint.sequence_number() {
         return Err(anyhow::anyhow!(
             "target checkpoint {} is older than highest verified checkpoint {}",
@@ -987,7 +984,7 @@ where
         .map(|next| {
             let peers = peer_balancer.clone().with_checkpoint(next);
             let peer_heights = peer_heights.clone();
-            let pinned_checkpoints = &pinned_checkpoints;
+            // let pinned_checkpoints = &pinned_checkpoints;
             let checkpoint_copy = checkpoint.clone();
             async move {
                 if next != *checkpoint_copy.sequence_number() {
@@ -1074,26 +1071,26 @@ where
             //     .binary_search_by_key(checkpoint.sequence_number(), |(seq_num, _digest)| *seq_num)
             //     .is_ok()
             // {
-            //     break 'cp VerifiedCheckpoint::new_unchecked(checkpoint);
+                break 'cp VerifiedCheckpoint::new_unchecked(checkpoint);
             // }
-            match verify_checkpoint(&current, &store, checkpoint) {
-                Ok(verified_checkpoint) => verified_checkpoint,
-                Err(checkpoint) => {
-                    let mut peer_heights = peer_heights.write().unwrap();
-                    // Remove the checkpoint from our temporary store so that we can try querying
-                    // another peer for a different one
-                    peer_heights.remove_checkpoint(checkpoint.digest());
+            // match verify_checkpoint(&current, &store, checkpoint) {
+            //     Ok(verified_checkpoint) => verified_checkpoint,
+            //     Err(checkpoint) => {
+            //         let mut peer_heights = peer_heights.write().unwrap();
+            //         // Remove the checkpoint from our temporary store so that we can try querying
+            //         // another peer for a different one
+            //         peer_heights.remove_checkpoint(checkpoint.digest());
 
-                    // Mark peer as not on the same chain as us
-                    if let Some(peer_id) = maybe_peer_id {
-                        peer_heights.mark_peer_as_not_on_same_chain(peer_id);
-                    }
+            //         // Mark peer as not on the same chain as us
+            //         if let Some(peer_id) = maybe_peer_id {
+            //             peer_heights.mark_peer_as_not_on_same_chain(peer_id);
+            //         }
 
-                    return Err(anyhow::anyhow!(
-                        "unable to verify checkpoint {checkpoint:?}"
-                    ));
-                }
-            }
+            //         return Err(anyhow::anyhow!(
+            //             "unable to verify checkpoint {checkpoint:?}"
+            //         ));
+            //     }
+            // }
         };
 
         debug!(checkpoint_seq = ?checkpoint.sequence_number(), "verified checkpoint summary");
