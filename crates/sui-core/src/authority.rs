@@ -1281,18 +1281,18 @@ impl AuthorityState {
         transaction: &VerifiedExecutableTransaction,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SuiResult<TransactionEffects> {
-        let _metrics_guard = if transaction.is_consensus_tx() {
-            self.metrics
-                .execute_certificate_latency_shared_object
-                .start_timer()
-        } else {
-            self.metrics
-                .execute_certificate_latency_single_writer
-                .start_timer()
-        };
+        // let _metrics_guard = if transaction.is_consensus_tx() {
+        //     self.metrics
+        //         .execute_certificate_latency_shared_object
+        //         .start_timer()
+        // } else {
+        //     self.metrics
+        //         .execute_certificate_latency_single_writer
+        //         .start_timer()
+        // };
         trace!("execute_transaction");
 
-        self.metrics.total_cert_attempts.inc();
+        // self.metrics.total_cert_attempts.inc();
 
         if !transaction.is_consensus_tx() {
             // Shared object transactions need to be sequenced by the consensus before enqueueing

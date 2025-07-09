@@ -492,10 +492,10 @@ impl ExecutionSchedulerAPI for TransactionManager {
                 let digest = *cert.digest();
                 // skip already executed txes
                 if self.transaction_cache_read.is_tx_already_executed(&digest) {
-                    self.metrics
-                        .transaction_manager_num_enqueued_certificates
-                        .with_label_values(&["already_executed"])
-                        .inc();
+                    // self.metrics
+                    //     .transaction_manager_num_enqueued_certificates
+                    //     .with_label_values(&["already_executed"])
+                    //     .inc();
                     false
                 } else {
                     true

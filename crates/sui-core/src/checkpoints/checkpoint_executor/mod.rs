@@ -539,13 +539,13 @@ impl CheckpointExecutor {
 
         let _scope = mysten_metrics::monitored_scope("CheckpointExecutor::finalize_checkpoint");
 
-        if self.state.is_fullnode(&self.epoch_store) {
-            self.state.congestion_tracker.process_checkpoint_effects(
-                &*self.transaction_cache_reader,
-                &ckpt_state.data.checkpoint,
-                &tx_data.effects,
-            );
-        }
+        // if self.state.is_fullnode(&self.epoch_store) {
+        //     self.state.congestion_tracker.process_checkpoint_effects(
+        //         &*self.transaction_cache_reader,
+        //         &ckpt_state.data.checkpoint,
+        //         &tx_data.effects,
+        //     );
+        // }
 
         self.insert_finalized_transactions(&ckpt_state.data.tx_digests, sequence_number);
 
@@ -582,16 +582,16 @@ impl CheckpointExecutor {
             .insert_finalized_transactions(tx_digests, sequence_number)
             .expect("failed to insert finalized transactions");
 
-        if self.state.is_fullnode(&self.epoch_store) {
-            // TODO remove once we no longer need to support this table for read RPC
-            self.state
-                .get_checkpoint_cache()
-                .deprecated_insert_finalized_transactions(
-                    tx_digests,
-                    self.epoch_store.epoch(),
-                    sequence_number,
-                );
-        }
+        // if self.state.is_fullnode(&self.epoch_store) {
+        //     // TODO remove once we no longer need to support this table for read RPC
+        //     self.state
+        //         .get_checkpoint_cache()
+        //         .deprecated_insert_finalized_transactions(
+        //             tx_digests,
+        //             self.epoch_store.epoch(),
+        //             sequence_number,
+        //         );
+        // }
     }
 
     #[instrument(level = "info", skip_all)]
@@ -775,13 +775,13 @@ impl CheckpointExecutor {
             .filter_map(
                 |(txn, tx_digest, expected_fx_digest, effects, executed_fx_digest)| {
                     if let Some(executed_fx_digest) = executed_fx_digest {
-                        assert_not_forked(
-                            &ckpt_state.data.checkpoint,
-                            tx_digest,
-                            expected_fx_digest,
-                            executed_fx_digest,
-                            &*self.transaction_cache_reader,
-                        );
+                        // assert_not_forked(
+                        //     &ckpt_state.data.checkpoint,
+                        //     tx_digest,
+                        //     expected_fx_digest,
+                        //     executed_fx_digest,
+                        //     &*self.transaction_cache_reader,
+                        // );
                         None
                     } else if txn.transaction_data().is_end_of_epoch_tx() {
                         None
