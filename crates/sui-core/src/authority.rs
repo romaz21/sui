@@ -2827,11 +2827,11 @@ impl AuthorityState {
             // Emit events
             self.subscription_handler
                 .process_tx(&events2)
-                .tap_ok(|_| {
-                    self.metrics
-                        .post_processing_total_tx_had_event_processed
-                        .inc()
-                })
+                // .tap_ok(|_| {
+                //     self.metrics
+                //         .post_processing_total_tx_had_event_processed
+                //         .inc()
+                // })
                 .tap_err(|e| {
                     warn!(
                         ?tx_digest,
@@ -2856,9 +2856,9 @@ impl AuthorityState {
                 .tap_err(|e| error!(?tx_digest, "Post processing - Couldn't index tx: {e}"))
                 .expect("Indexing tx should not fail");
 
-            self.metrics
-                .post_processing_total_events_emitted
-                .inc_by(events.data.len() as u64);
+            // self.metrics
+            //     .post_processing_total_events_emitted
+            //     .inc_by(events.data.len() as u64);
         };
         Ok(())
     }
