@@ -111,11 +111,12 @@ pub async fn execution_process(
         spawn_monitored_task!(epoch_store.within_alive_epoch(async move {
             let _scope = monitored_scope("ExecutionDriver::task");
             let _guard = permit;
-            if authority.is_tx_already_executed(&digest) {
-                return;
-            }
+            // if authority.is_tx_already_executed(&digest) {
+            //     trace!(tx_digest = ?digest, "tx was already executed");
+            //     return;
+            // }
 
-            fail_point_async!("transaction_execution_delay");
+            // fail_point_async!("transaction_execution_delay");
 
             match authority.try_execute_immediately(
                 &certificate,
@@ -131,10 +132,6 @@ pub async fn execution_process(
                 }
                 _ => (),
             }
-            authority
-                .metrics
-                .execution_driver_executed_transactions
-                .inc();
         }.instrument(error_span!("execution_driver", tx_digest = ?digest))));
     }
 }
