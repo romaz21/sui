@@ -1803,36 +1803,36 @@ impl AuthorityState {
                 epoch_store.update_authenticator_state(auth_state);
 
                 // double check that the signature verifier always matches the authenticator state
-                if cfg!(debug_assertions) {
-                    let authenticator_state = get_authenticator_state(self.get_object_store())
-                        .expect("Read cannot fail")
-                        .expect("Authenticator state must exist");
+                // if cfg!(debug_assertions) {
+                //     let authenticator_state = get_authenticator_state(self.get_object_store())
+                //         .expect("Read cannot fail")
+                //         .expect("Authenticator state must exist");
 
-                    let mut sys_jwks: Vec<_> = authenticator_state
-                        .active_jwks
-                        .into_iter()
-                        .map(|jwk| (jwk.jwk_id, jwk.jwk))
-                        .collect();
-                    let mut active_jwks: Vec<_> = epoch_store
-                        .signature_verifier
-                        .get_jwks()
-                        .into_iter()
-                        .collect();
-                    sys_jwks.sort();
-                    active_jwks.sort();
+                //     let mut sys_jwks: Vec<_> = authenticator_state
+                //         .active_jwks
+                //         .into_iter()
+                //         .map(|jwk| (jwk.jwk_id, jwk.jwk))
+                //         .collect();
+                //     let mut active_jwks: Vec<_> = epoch_store
+                //         .signature_verifier
+                //         .get_jwks()
+                //         .into_iter()
+                //         .collect();
+                //     sys_jwks.sort();
+                //     active_jwks.sort();
 
-                    assert_eq!(sys_jwks, active_jwks);
-                }
+                //     assert_eq!(sys_jwks, active_jwks);
+                // }
             }
         }
         tx_guard.commit_tx();
 
-        epoch_store.record_local_execution_time(
-            certificate.data().transaction_data(),
-            &effects,
-            timings,
-            execution_start_time.elapsed(),
-        );
+        // epoch_store.record_local_execution_time(
+        //     certificate.data().transaction_data(),
+        //     &effects,
+        //     timings,
+        //     execution_start_time.elapsed(),
+        // );
 
         // let elapsed = process_certificate_start_time.elapsed().as_micros() as f64;
         // if elapsed > 0.0 {

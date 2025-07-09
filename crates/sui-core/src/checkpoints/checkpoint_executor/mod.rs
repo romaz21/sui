@@ -328,11 +328,11 @@ impl CheckpointExecutor {
                 .await
         };
 
-        let tps = self.tps_estimator.lock().update(
-            Instant::now(),
-            ckpt_state.data.checkpoint.network_total_transactions,
-        );
-        self.metrics.checkpoint_exec_sync_tps.set(tps as i64);
+        // let tps = self.tps_estimator.lock().update(
+        //     Instant::now(),
+        //     ckpt_state.data.checkpoint.network_total_transactions,
+        // );
+        // self.metrics.checkpoint_exec_sync_tps.set(tps as i64);
 
         // self.backpressure_manager
         //     .update_highest_executed_checkpoint(*ckpt_state.data.checkpoint.sequence_number());
