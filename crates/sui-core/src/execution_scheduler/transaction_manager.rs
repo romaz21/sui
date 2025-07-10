@@ -275,9 +275,9 @@ impl Inner {
             });
         for digest in digests.iter() {
             let age_opt = input_txns.remove(digest).expect("digest must be in map");
-            metrics
-                .transaction_manager_transaction_queue_age_s
-                .observe(age_opt.elapsed().as_secs_f64());
+            // metrics
+            //     .transaction_manager_transaction_queue_age_s
+            //     .observe(age_opt.elapsed().as_secs_f64());
         }
 
         if input_txns.is_empty() {
@@ -414,9 +414,9 @@ impl TransactionManager {
                 return;
             }
 
-            self.metrics
-                .transaction_manager_num_executing_certificates
-                .set(inner.executing_certificates.len() as i64);
+            // self.metrics
+            //     .transaction_manager_num_executing_certificates
+            //     .set(inner.executing_certificates.len() as i64);
 
             inner.maybe_shrink_capacity();
         }

@@ -1441,10 +1441,10 @@ impl AuthorityState {
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SuiResult<InputObjects> {
         let _scope = monitored_scope("Execution::load_input_objects");
-        let _metrics_guard = self
-            .metrics
-            .execution_load_input_objects_latency
-            .start_timer();
+        // let _metrics_guard = self
+        //     .metrics
+        //     .execution_load_input_objects_latency
+        //     .start_timer();
         let input_objects = &certificate.data().transaction_data().input_objects()?;
         self.input_loader.read_objects_for_execution(
             &certificate.key(),
@@ -1540,39 +1540,7 @@ impl AuthorityState {
 
         let _scope = monitored_scope("Execution::process_certificate");
 
-        fail_point_if!("correlated-crash-process-certificate", || {
-            if sui_simulator::random::deterministic_probability_once(&tx_digest, 0.01) {
-                sui_simulator::task::kill_current_node(None);
-            }
-        });
-
         let execution_guard = self.execution_lock_for_executable_transaction(certificate);
-        // // Any caller that verifies the signatures on the certificate will have already checked the
-        // // epoch. But paths that don't verify sigs (e.g. execution from checkpoint, reading from db)
-        // // present the possibility of an epoch mismatch. If this cert is not finalzied in previous
-        // // epoch, then it's invalid.
-        let execution_guard = match execution_guard {
-            Ok(execution_guard) => execution_guard,
-            Err(err) => {
-                tx_guard.release();
-                return Err(err);
-            }
-        };
-        // // Since we obtain a reference to the epoch store before taking the execution lock, it's
-        // // possible that reconfiguration has happened and they no longer match.
-        // if *execution_guard != epoch_store.epoch() {
-        //     tx_guard.release();
-        //     info!("The epoch of the execution_guard doesn't match the epoch store");
-        //     return Err(SuiError::WrongEpoch {
-        //         expected_epoch: epoch_store.epoch(),
-        //         actual_epoch: *execution_guard,
-        //     });
-        // }
-
-        // Errors originating from prepare_certificate may be transient (failure to read locks) or
-        // non-transient (transaction input is invalid, move vm errors). However, all errors from
-        // this function occur before we have written anything to the db, so we commit the tx
-        // guard and rely on the client to retry the tx (if it was transient).
         let (transaction_outputs, timings, execution_error_opt) = match self.execute_certificate(
             certificate,
             input_objects,
@@ -1586,8 +1554,6 @@ impl AuthorityState {
             }
             Ok(res) => res,
         };
-
-        fail_point!("crash");
 
         let effects = transaction_outputs.effects.clone();
         if scheduling_source == SchedulingSource::MysticetiFastPath {
@@ -1612,45 +1578,9 @@ impl AuthorityState {
                     debug_fatal!("Authenticator state update failed: {:?}", err);
                 }
                 epoch_store.update_authenticator_state(auth_state);
-
-                // double check that the signature verifier always matches the authenticator state
-                // if cfg!(debug_assertions) {
-                //     let authenticator_state = get_authenticator_state(self.get_object_store())
-                //         .expect("Read cannot fail")
-                //         .expect("Authenticator state must exist");
-
-                //     let mut sys_jwks: Vec<_> = authenticator_state
-                //         .active_jwks
-                //         .into_iter()
-                //         .map(|jwk| (jwk.jwk_id, jwk.jwk))
-                //         .collect();
-                //     let mut active_jwks: Vec<_> = epoch_store
-                //         .signature_verifier
-                //         .get_jwks()
-                //         .into_iter()
-                //         .collect();
-                //     sys_jwks.sort();
-                //     active_jwks.sort();
-
-                //     assert_eq!(sys_jwks, active_jwks);
-                // }
             }
         }
         tx_guard.commit_tx();
-
-        // epoch_store.record_local_execution_time(
-        //     certificate.data().transaction_data(),
-        //     &effects,
-        //     timings,
-        //     execution_start_time.elapsed(),
-        // );
-
-        // let elapsed = process_certificate_start_time.elapsed().as_micros() as f64;
-        // if elapsed > 0.0 {
-        //     self.metrics
-        //         .execution_gas_latency_ratio
-        //         .observe(effects.gas_cost_summary().computation_cost as f64 / elapsed);
-        // };
         Ok((effects, execution_error_opt))
     }
 
