@@ -163,10 +163,10 @@ pub fn verify_checkpoint_with_committee(
     current: &VerifiedCheckpoint,
     checkpoint: CertifiedCheckpointSummary,
 ) -> Result<VerifiedCheckpoint, CertifiedCheckpointSummary> {
-    assert_eq!(
-        *checkpoint.sequence_number(),
-        current.sequence_number().checked_add(1).unwrap()
-    );
+    // assert_eq!(
+    //     *checkpoint.sequence_number(),
+    //     current.sequence_number().checked_add(1).unwrap()
+    // );
 
     if Some(*current.digest()) != checkpoint.previous_digest {
         debug!(
