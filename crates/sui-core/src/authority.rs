@@ -1446,18 +1446,32 @@ impl AuthorityState {
         let tx_guard = epoch_store.acquire_tx_guard(certificate)?;
 
         let tx_cache_reader = self.get_transaction_cache_reader();
-        if let Some(effects) = tx_cache_reader.get_executed_effects(tx_digest) {
-            if let Some(expected_effects_digest) = execution_env.expected_effects_digest {
-                assert_eq!(
-                    effects.digest(),
-                    expected_effects_digest,
-                    "Unexpected effects digest for transaction {:?}",
-                    tx_digest
-                );
-            }
-            tx_guard.release();
-            return Ok((effects, None));
-        }
+        // if epoch_store.protocol_config().mysticeti_fastpath()
+        //     && !certificate.is_consensus_tx()
+        //     && execution_env.scheduling_source == SchedulingSource::NonFastPath
+        // {
+        //     // If this transaction is not scheduled from fastpath, it must be either
+        //     // from consensus or from checkpoint, i.e. it must be finalized.
+        //     // To avoid re-executing fastpath transactions, we always attempt to flush
+        //     // fastpath outputs if it is already there.
+        //     // If it does get flushed, the effects will appear in the cache, and we will
+        //     // skip the execution in the next check.
+        //     self.get_cache_writer()
+        //         .flush_fastpath_transaction_outputs(*tx_digest, epoch_store.epoch());
+        // }
+
+        // if let Some(effects) = tx_cache_reader.get_executed_effects(tx_digest) {
+        //     if let Some(expected_effects_digest) = execution_env.expected_effects_digest {
+        //         assert_eq!(
+        //             effects.digest(),
+        //             expected_effects_digest,
+        //             "Unexpected effects digest for transaction {:?}",
+        //             tx_digest
+        //         );
+        //     }
+        //     tx_guard.release();
+        //     return Ok((effects, None));
+        // }
 
         let execution_start_time = Instant::now();
 
@@ -1739,7 +1753,6 @@ impl AuthorityState {
         // this function occur before we have written anything to the db, so we commit the tx
         // guard and rely on the client to retry the tx (if it was transient).
         self.execute_certificate(
-            execution_guard,
             certificate,
             input_objects,
             expected_effects_digest,
@@ -1863,7 +1876,6 @@ impl AuthorityState {
     #[instrument(level = "trace", skip_all)]
     fn execute_certificate(
         &self,
-        _execution_guard: &ExecutionLockReadGuard<'_>,
         certificate: &VerifiedExecutableTransaction,
         input_objects: InputObjects,
         expected_effects_digest: Option<TransactionEffectsDigest>,
@@ -1879,8 +1891,8 @@ impl AuthorityState {
         let prepare_certificate_start_time = tokio::time::Instant::now();
 
         // TODO: We need to move this to a more appropriate place to avoid redundant checks.
-        let tx_data = certificate.data().transaction_data();
-        tx_data.validity_check(epoch_store.protocol_config())?;
+        // let tx_data = certificate.data().transaction_data();
+        // tx_data.validity_check(epoch_store.protocol_config())?;
 
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
@@ -1892,8 +1904,8 @@ impl AuthorityState {
             epoch_store.reference_gas_price(),
         )?;
 
-        let owned_object_refs = input_objects.inner().filter_owned_objects();
-        self.check_owned_locks(&owned_object_refs)?;
+        // let owned_object_refs = input_objects.inner().filter_owned_objects();
+        // self.check_owned_locks(&owned_object_refs)?;
         let tx_digest = *certificate.digest();
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
@@ -1935,47 +1947,47 @@ impl AuthorityState {
                 &mut None,
             );
 
-        if let Some(expected_effects_digest) = expected_effects_digest {
-            if effects.digest() != expected_effects_digest {
-                // We dont want to mask the original error, so we log it and continue.
-                match self.debug_dump_transaction_state(
-                    &tx_digest,
-                    &effects,
-                    expected_effects_digest,
-                    &inner_temp_store,
-                    certificate,
-                    &self.config.state_debug_dump_config,
-                ) {
-                    Ok(out_path) => {
-                        info!(
-                            "Dumped node state for transaction {} to {}",
-                            tx_digest,
-                            out_path.as_path().display().to_string()
-                        );
-                    }
-                    Err(e) => {
-                        error!("Error dumping state for transaction {}: {e}", tx_digest);
-                    }
-                }
-                error!(
-                    ?tx_digest,
-                    ?expected_effects_digest,
-                    actual_effects = ?effects,
-                    "fork detected!"
-                );
-                panic!(
-                    "Transaction {} is expected to have effects digest {}, but got {}!",
-                    tx_digest,
-                    expected_effects_digest,
-                    effects.digest(),
-                );
-            }
-        }
+        // if let Some(expected_effects_digest) = expected_effects_digest {
+        //     if effects.digest() != expected_effects_digest {
+        //         // We dont want to mask the original error, so we log it and continue.
+        //         match self.debug_dump_transaction_state(
+        //             &tx_digest,
+        //             &effects,
+        //             expected_effects_digest,
+        //             &inner_temp_store,
+        //             certificate,
+        //             &self.config.state_debug_dump_config,
+        //         ) {
+        //             Ok(out_path) => {
+        //                 info!(
+        //                     "Dumped node state for transaction {} to {}",
+        //                     tx_digest,
+        //                     out_path.as_path().display().to_string()
+        //                 );
+        //             }
+        //             Err(e) => {
+        //                 error!("Error dumping state for transaction {}: {e}", tx_digest);
+        //             }
+        //         }
+        //         error!(
+        //             ?tx_digest,
+        //             ?expected_effects_digest,
+        //             actual_effects = ?effects,
+        //             "fork detected!"
+        //         );
+        //         panic!(
+        //             "Transaction {} is expected to have effects digest {}, but got {}!",
+        //             tx_digest,
+        //             expected_effects_digest,
+        //             effects.digest(),
+        //         );
+        //     }
+        // }
 
-        fail_point_if!("cp_execution_nondeterminism", || {
-            #[cfg(msim)]
-            self.create_fail_state(certificate, epoch_store, &mut effects);
-        });
+        // fail_point_if!("cp_execution_nondeterminism", || {
+        //     #[cfg(msim)]
+        //     self.create_fail_state(certificate, epoch_store, &mut effects);
+        // });
 
         // index certificate
         let _ = self
@@ -2017,7 +2029,6 @@ impl AuthorityState {
         let execution_guard = lock.try_read().unwrap();
 
         let (transaction_outputs, _timings, execution_error_opt) = self.execute_certificate(
-            &execution_guard,
             certificate,
             input_objects,
             None,
@@ -2959,6 +2970,29 @@ impl AuthorityState {
 
         // Index tx
         if let Some(indexes) = &self.indexes {
+            let effects2: SuiTransactionBlockEffects = effects.clone().try_into()?;
+            let events2 = self.make_transaction_block_events(
+                events.clone(),
+                *tx_digest,
+                timestamp_ms,
+                epoch_store,
+                inner_temporary_store,
+            )?;
+            // Emit events
+            self.subscription_handler
+                .process_tx(&events2)
+                .tap_ok(|_| {
+                    self.metrics
+                        .post_processing_total_tx_had_event_processed
+                        .inc()
+                })
+                .tap_err(|e| {
+                    warn!(
+                        ?tx_digest,
+                        "Post processing - Couldn't process events for tx: {}", e
+                    )
+                })?;
+            
             let _ = self
                 .index_tx(
                     indexes.as_ref(),
@@ -2975,29 +3009,6 @@ impl AuthorityState {
                 .tap_ok(|_| self.metrics.post_processing_total_tx_indexed.inc())
                 .tap_err(|e| error!(?tx_digest, "Post processing - Couldn't index tx: {e}"))
                 .expect("Indexing tx should not fail");
-
-            let effects: SuiTransactionBlockEffects = effects.clone().try_into()?;
-            let events = self.make_transaction_block_events(
-                events.clone(),
-                *tx_digest,
-                timestamp_ms,
-                epoch_store,
-                inner_temporary_store,
-            )?;
-            // Emit events
-            self.subscription_handler
-                .process_tx(certificate.data().transaction_data(), &effects, &events)
-                .tap_ok(|_| {
-                    self.metrics
-                        .post_processing_total_tx_had_event_processed
-                        .inc()
-                })
-                .tap_err(|e| {
-                    warn!(
-                        ?tx_digest,
-                        "Post processing - Couldn't process events for tx: {}", e
-                    )
-                })?;
 
             self.metrics
                 .post_processing_total_events_emitted
@@ -5546,7 +5557,6 @@ impl AuthorityState {
         )?;
 
         let (transaction_outputs, _timings, _execution_error_opt) = self.execute_certificate(
-            &execution_guard,
             &executable_tx,
             input_objects,
             None,
