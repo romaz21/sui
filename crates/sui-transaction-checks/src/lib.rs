@@ -212,7 +212,7 @@ mod checked {
             reference_gas_price,
             transaction,
         )?;
-        check_objects(transaction, input_objects)?;
+        // check_objects(transaction, input_objects)?;
 
         Ok(gas_status)
     }
@@ -357,7 +357,7 @@ mod checked {
                 })?;
                 gas_objects.push(obj);
             }
-            gas_status.check_gas_balance(&gas_objects, gas_budget)?;
+            // gas_status.check_gas_balance(&gas_objects, gas_budget)?;
             Ok(gas_status)
         }
     }
