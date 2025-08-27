@@ -276,9 +276,6 @@ impl Inner {
             });
         for digest in digests.iter() {
             let age_opt = input_txns.remove(digest).expect("digest must be in map");
-            metrics
-                .transaction_manager_transaction_queue_age_s
-                .observe(age_opt.elapsed().as_secs_f64());
         }
 
         if input_txns.is_empty() {
@@ -415,9 +412,6 @@ impl TransactionManager {
                 return;
             }
 
-            self.metrics
-                .transaction_manager_num_executing_certificates
-                .set(inner.executing_certificates.len() as i64);
 
             inner.maybe_shrink_capacity();
         }
@@ -493,10 +487,6 @@ impl ExecutionSchedulerAPI for TransactionManager {
                 let digest = *cert.digest();
                 // skip already executed txes
                 if self.transaction_cache_read.is_tx_already_executed(&digest) {
-                    self.metrics
-                        .transaction_manager_num_enqueued_certificates
-                        .with_label_values(&["already_executed"])
-                        .inc();
                     false
                 } else {
                     true
@@ -652,28 +642,16 @@ impl ExecutionSchedulerAPI for TransactionManager {
 
             // skip already pending txes
             if inner.pending_certificates.contains_key(&digest) {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["already_pending"])
-                    .inc();
                 continue;
             }
             // skip already executing txes
             if inner.executing_certificates.contains(&digest) {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["already_executing"])
-                    .inc();
                 continue;
             }
             // skip already executed txes
             let is_tx_already_executed =
                 self.transaction_cache_read.is_tx_already_executed(&digest);
             if is_tx_already_executed {
-                self.metrics
-                    .transaction_manager_num_enqueued_certificates
-                    .with_label_values(&["already_executed"])
-                    .inc();
                 continue;
             }
 
@@ -700,10 +678,6 @@ impl ExecutionSchedulerAPI for TransactionManager {
 
             // Ready transactions can start to execute.
             if pending_cert.waiting_input_objects.is_empty() {
-                // self.metrics
-                //     .transaction_manager_num_enqueued_certificates
-                //     .with_label_values(&["ready"])
-                //     .inc();
                 pending_cert.stats.ready_time = Some(Instant::now());
                 // Send to execution driver for execution.
                 self.certificate_ready(&mut inner, pending_cert);
@@ -719,18 +693,8 @@ impl ExecutionSchedulerAPI for TransactionManager {
                 digest
             );
 
-            self.metrics
-                .transaction_manager_num_enqueued_certificates
-                .with_label_values(&["pending"])
-                .inc();
         }
 
-        self.metrics
-            .transaction_manager_num_missing_objects
-            .set(inner.missing_inputs.len() as i64);
-        self.metrics
-            .transaction_manager_num_pending_certificates
-            .set(inner.pending_certificates.len() as i64);
 
         inner.maybe_reserve_capacity();
     }
@@ -861,29 +825,12 @@ impl TransactionManager {
             }
         }
 
-        self.metrics
-            .transaction_manager_num_missing_objects
-            .set(inner.missing_inputs.len() as i64);
-        self.metrics
-            .transaction_manager_num_pending_certificates
-            .set(inner.pending_certificates.len() as i64);
-        self.metrics
-            .transaction_manager_num_executing_certificates
-            .set(inner.executing_certificates.len() as i64);
     }
 
     /// Sends the ready certificate for execution.
     fn certificate_ready(&self, inner: &mut Inner, pending_certificate: PendingCertificate) {
         trace!(tx_digest = ?pending_certificate.certificate.digest(), "certificate ready");
-        // assert_eq!(pending_certificate.waiting_input_objects.len(), 0);
-        // Record as an executing certificate.
-        // assert!(inner
-        //     .executing_certificates
-        //     .insert(*pending_certificate.certificate.digest()));
-        // self.metrics.txn_ready_rate_tracker.lock().record();
         let _ = self.tx_ready_certificates.send(pending_certificate);
-        self.metrics.transaction_manager_num_ready.inc();
-        self.metrics.execution_driver_dispatch_queue.inc();
     }
 
     // Returns the number of transactions waiting on each object ID, as well as the age of the oldest transaction in the queue.

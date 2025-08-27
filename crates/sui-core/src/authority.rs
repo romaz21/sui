@@ -1357,18 +1357,7 @@ impl AuthorityState {
         transaction: &VerifiedExecutableTransaction,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SuiResult<TransactionEffects> {
-        let _metrics_guard = if transaction.is_consensus_tx() {
-            self.metrics
-                .execute_certificate_latency_shared_object
-                .start_timer()
-        } else {
-            self.metrics
-                .execute_certificate_latency_single_writer
-                .start_timer()
-        };
         trace!("execute_transaction");
-
-        self.metrics.total_cert_attempts.inc();
 
         if !transaction.is_consensus_tx() {
             // Shared object transactions need to be sequenced by the consensus before enqueueing
@@ -1624,10 +1613,6 @@ impl AuthorityState {
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SuiResult<InputObjects> {
         let _scope = monitored_scope("Execution::load_input_objects");
-        let _metrics_guard = self
-            .metrics
-            .execution_load_input_objects_latency
-            .start_timer();
         let input_objects = &certificate.data().transaction_data().input_objects()?;
         self.input_loader.read_objects_for_execution(
             &certificate.key(),
@@ -1890,9 +1875,6 @@ impl AuthorityState {
         let _metrics_guard = self.metrics.prepare_certificate_latency.start_timer();
         let prepare_certificate_start_time = tokio::time::Instant::now();
 
-        // TODO: We need to move this to a more appropriate place to avoid redundant checks.
-        // let tx_data = certificate.data().transaction_data();
-        // tx_data.validity_check(epoch_store.protocol_config())?;
 
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
@@ -1904,8 +1886,6 @@ impl AuthorityState {
             epoch_store.reference_gas_price(),
         )?;
 
-        // let owned_object_refs = input_objects.inner().filter_owned_objects();
-        // self.check_owned_locks(&owned_object_refs)?;
         let tx_digest = *certificate.digest();
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
@@ -1947,47 +1927,10 @@ impl AuthorityState {
                 &mut None,
             );
 
-        // if let Some(expected_effects_digest) = expected_effects_digest {
-        //     if effects.digest() != expected_effects_digest {
-        //         // We dont want to mask the original error, so we log it and continue.
-        //         match self.debug_dump_transaction_state(
-        //             &tx_digest,
-        //             &effects,
-        //             expected_effects_digest,
-        //             &inner_temp_store,
-        //             certificate,
-        //             &self.config.state_debug_dump_config,
-        //         ) {
-        //             Ok(out_path) => {
-        //                 info!(
-        //                     "Dumped node state for transaction {} to {}",
-        //                     tx_digest,
-        //                     out_path.as_path().display().to_string()
-        //                 );
-        //             }
-        //             Err(e) => {
-        //                 error!("Error dumping state for transaction {}: {e}", tx_digest);
-        //             }
-        //         }
-        //         error!(
-        //             ?tx_digest,
-        //             ?expected_effects_digest,
-        //             actual_effects = ?effects,
-        //             "fork detected!"
-        //         );
-        //         panic!(
-        //             "Transaction {} is expected to have effects digest {}, but got {}!",
-        //             tx_digest,
-        //             expected_effects_digest,
-        //             effects.digest(),
-        //         );
-        //     }
-        // }
-
-        // fail_point_if!("cp_execution_nondeterminism", || {
-        //     #[cfg(msim)]
-        //     self.create_fail_state(certificate, epoch_store, &mut effects);
-        // });
+        fail_point_if!("cp_execution_nondeterminism", || {
+            #[cfg(msim)]
+            self.create_fail_state(certificate, epoch_store, &mut effects);
+        });
 
         // index certificate
         let _ = self
@@ -1997,24 +1940,12 @@ impl AuthorityState {
                 error!(?tx_digest, "tx post processing failed: {e}");
             });
 
-        self.update_metrics(certificate, &inner_temp_store, &effects);
 
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
             effects,
             inner_temp_store,
         );
-
-        let elapsed = prepare_certificate_start_time.elapsed().as_micros() as f64;
-        if elapsed > 0.0 {
-            self.metrics.prepare_cert_gas_latency_ratio.observe(
-                transaction_outputs
-                    .effects
-                    .gas_cost_summary()
-                    .computation_cost as f64
-                    / elapsed,
-            );
-        }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
     }
@@ -3009,6 +2940,15 @@ impl AuthorityState {
                 .tap_ok(|_| self.metrics.post_processing_total_tx_indexed.inc())
                 .tap_err(|e| error!(?tx_digest, "Post processing - Couldn't index tx: {e}"))
                 .expect("Indexing tx should not fail");
+
+            let effects: SuiTransactionBlockEffects = effects.clone().try_into()?;
+            let events = self.make_transaction_block_events(
+                events.clone(),
+                *tx_digest,
+                timestamp_ms,
+                epoch_store,
+                inner_temporary_store,
+            )?;
 
             self.metrics
                 .post_processing_total_events_emitted
