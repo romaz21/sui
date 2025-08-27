@@ -30,7 +30,7 @@ use tracing::{debug, info, trace};
 const TIMEOUT: Duration = Duration::from_secs(1);
 const ONE_DAY_MILLISECONDS: u64 = 24 * 60 * 60 * 1_000;
 const MAX_ADDRESS_LENGTH: usize = 300;
-const MAX_PEERS_TO_SEND: usize = 200;
+const MAX_PEERS_TO_SEND: usize = 1000;
 const MAX_ADDRESSES_PER_PEER: usize = 2;
 
 mod generated {
@@ -321,8 +321,7 @@ impl DiscoveryEventLoop {
             .clone()
             .into_iter()
             .filter(|(peer_id, info)| {
-                peer_id != &self.network.peer_id() &&
-                !info.addresses.is_empty() // Peer has addresses we can dial
+                peer_id != &self.network.peer_id()
                 && !state.connected_peers.contains_key(peer_id) // We're not already connected
                 && !self.pending_dials.contains_key(peer_id) // There is no pending dial to this node
             })
@@ -385,6 +384,10 @@ async fn try_to_connect_to_peer(network: Network, info: NodeInfo) {
                 })
                 .is_ok()
             {
+                debug!("Connected to {} at address '{}'", 
+                    info.peer_id.short_display(4),
+                    multiaddr
+                );
                 return;
             }
         }
@@ -409,6 +412,7 @@ async fn try_to_connect_to_seed_peers(
         config.target_concurrent_connections(),
         |(seed, address)| async move {
             // Ignore the result and just log the error  if there is one
+            debug!("Connecting seed peer id: {:?} address: {address}", seed.peer_id);
             let _ = if let Some(peer_id) = seed.peer_id {
                 network.connect_with_peer_id(address, peer_id).await
             } else {
@@ -513,11 +517,6 @@ fn update_known_peers(
         // +1 to account for the "own_info" of the serving peer
         // Skip peers whose timestamp is too far in the future from our clock
         // or that are too old
-        if peer_info.timestamp_ms > now_unix.saturating_add(30 * 1_000) // 30 seconds
-            || now_unix.saturating_sub(peer_info.timestamp_ms) > ONE_DAY_MILLISECONDS
-        {
-            continue;
-        }
 
         if peer_info.peer_id == our_peer_id {
             continue;

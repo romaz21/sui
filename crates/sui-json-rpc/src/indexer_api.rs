@@ -21,9 +21,7 @@ use sui_json_rpc_api::{
     cap_page_limit, validate_limit,
 };
 use sui_json_rpc_types::{
-    DynamicFieldPage, EventFilter, EventPage, ObjectsPage, Page, SuiObjectDataOptions,
-    SuiObjectResponse, SuiObjectResponseQuery, SuiTransactionBlockResponse,
-    SuiTransactionBlockResponseQuery, TransactionBlocksPage, TransactionFilter,
+    DynamicFieldPage, EventBandleFilter, EventFilter, EventPage, ObjectsPage, Page, SuiObjectDataOptions, SuiObjectResponse, SuiObjectResponseQuery, SuiTransactionBlockResponse, SuiTransactionBlockResponseQuery, TransactionBlocksPage, TransactionFilter
 };
 use sui_name_service::{Domain, NameRecord, NameServiceConfig, NameServiceError};
 use sui_open_rpc::Module;
@@ -318,7 +316,8 @@ impl<R: ReadApiServer> IndexerApiServer for IndexerApi<R> {
             sink,
             self.state
                 .get_subscription_handler()
-                .subscribe_events(filter),
+                // .subscribe_events(filter),
+                .subscribe_events_bandle(EventBandleFilter::All([])),
             Some(permit),
         );
         Ok(())

@@ -362,8 +362,6 @@ impl CheckpointExecutor {
             &self.metrics.checkpoint_contents_age,
             &self.metrics.checkpoint_contents_age_ms,
         );
-        self.backpressure_manager
-            .update_highest_certified_checkpoint(sequence_number);
 
         if checkpoint.is_last_checkpoint_of_epoch() && sequence_number > 0 {
             let _wait_for_previous_checkpoints_guard = mysten_metrics::monitored_scope(
@@ -391,15 +389,6 @@ impl CheckpointExecutor {
             self.verify_locally_built_checkpoint(checkpoint, &mut pipeline_handle)
                 .await
         };
-
-        let tps = self.tps_estimator.lock().update(
-            Instant::now(),
-            ckpt_state.data.checkpoint.network_total_transactions,
-        );
-        self.metrics.checkpoint_exec_sync_tps.set(tps as i64);
-
-        self.backpressure_manager
-            .update_highest_executed_checkpoint(*ckpt_state.data.checkpoint.sequence_number());
 
         let is_final_checkpoint = ckpt_state.data.checkpoint.is_last_checkpoint_of_epoch();
 
@@ -607,13 +596,6 @@ impl CheckpointExecutor {
 
         let _scope = mysten_metrics::monitored_scope("CheckpointExecutor::finalize_checkpoint");
 
-        if self.state.is_fullnode(&self.epoch_store) {
-            self.state.congestion_tracker.process_checkpoint_effects(
-                &*self.transaction_cache_reader,
-                &ckpt_state.data.checkpoint,
-                &tx_data.effects,
-            );
-        }
 
         self.insert_finalized_transactions(&ckpt_state.data.tx_digests, sequence_number);
 
@@ -650,16 +632,6 @@ impl CheckpointExecutor {
             .insert_finalized_transactions(tx_digests, sequence_number)
             .expect("failed to insert finalized transactions");
 
-        if self.state.is_fullnode(&self.epoch_store) {
-            // TODO remove once we no longer need to support this table for read RPC
-            self.state
-                .get_checkpoint_cache()
-                .deprecated_insert_finalized_transactions(
-                    tx_digests,
-                    self.epoch_store.epoch(),
-                    sequence_number,
-                );
-        }
     }
 
     #[instrument(level = "info", skip_all)]
@@ -851,13 +823,6 @@ impl CheckpointExecutor {
                         barrier_deps_builder.process_tx(*tx_digest, txn.transaction_data());
 
                     if let Some(executed_fx_digest) = executed_fx_digest {
-                        assert_not_forked(
-                            &ckpt_state.data.checkpoint,
-                            tx_digest,
-                            expected_fx_digest,
-                            executed_fx_digest,
-                            &*self.transaction_cache_reader,
-                        );
                         None
                     } else if txn.transaction_data().is_end_of_epoch_tx() {
                         None
