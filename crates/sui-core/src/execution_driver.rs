@@ -68,7 +68,6 @@ pub async fn execution_process(
             info!("Authority state has shutdown. Exiting ...");
             return;
         };
-        authority.metrics.execution_driver_dispatch_queue.dec();
 
         // TODO: Ideally execution_driver should own a copy of epoch store and recreate each epoch.
         let epoch_store = authority.load_epoch_store_one_call_per_task();
@@ -91,27 +90,13 @@ pub async fn execution_process(
         // the semaphore in this context.
         let permit = limit.acquire_owned().await.unwrap();
 
-        if get_rng().gen_range(0.0..1.0) < QUEUEING_DELAY_SAMPLING_RATIO {
-            authority
-                .metrics
-                .execution_queueing_latency
-                .report(txn_ready_time.elapsed());
-            if let Some(latency) = authority.metrics.execution_queueing_latency.latency() {
-                authority
-                    .metrics
-                    .execution_queueing_delay_s
-                    .observe(latency.as_secs_f64());
-            }
-        }
-
-        authority.metrics.execution_rate_tracker.lock().record();
-
         // Certificate execution can take significant time, so run it in a separate task.
         let epoch_store_clone = epoch_store.clone();
         spawn_monitored_task!(epoch_store.within_alive_epoch(async move {
             let _scope = monitored_scope("ExecutionDriver::task");
             let _guard = permit;
             if authority.is_tx_already_executed(&digest) {
+                trace!(tx_digest = ?digest, "tx was already executed");
                 return;
             }
 

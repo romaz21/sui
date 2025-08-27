@@ -12,8 +12,7 @@ use tracing::{error, instrument, trace};
 
 use crate::streamer::Streamer;
 use sui_json_rpc_types::{
-    EffectsWithInput, EventFilter, SuiTransactionBlockEffects, SuiTransactionBlockEvents,
-    TransactionFilter,
+    EffectsWithInput, EventBandleFilter, EventFilter, SuiTransactionBlockEffects, SuiTransactionBlockEvents, TransactionFilter
 };
 use sui_json_rpc_types::{SuiEvent, SuiTransactionBlockEffectsAPI};
 use sui_types::error::SuiResult;
@@ -68,6 +67,7 @@ impl SubscriptionMetrics {
 }
 
 pub struct SubscriptionHandler {
+    event_bandle_streamer: Streamer<Vec<SuiEvent>, Vec<SuiEvent>, EventBandleFilter>,
     event_streamer: Streamer<SuiEvent, SuiEvent, EventFilter>,
     transaction_streamer: Streamer<EffectsWithInput, SuiTransactionBlockEffects, TransactionFilter>,
 }
@@ -76,6 +76,7 @@ impl SubscriptionHandler {
     pub fn new(registry: &Registry) -> Self {
         let metrics = Arc::new(SubscriptionMetrics::new(registry));
         Self {
+            event_bandle_streamer: Streamer::spawn(EVENT_DISPATCH_BUFFER_SIZE, metrics.clone(), "event"),
             event_streamer: Streamer::spawn(EVENT_DISPATCH_BUFFER_SIZE, metrics.clone(), "event"),
             transaction_streamer: Streamer::spawn(EVENT_DISPATCH_BUFFER_SIZE, metrics, "tx"),
         }
@@ -83,27 +84,27 @@ impl SubscriptionHandler {
 }
 
 impl SubscriptionHandler {
-    #[instrument(level = "trace", skip_all, fields(tx_digest =? effects.transaction_digest()), err)]
+    #[instrument(level = "trace", skip_all, err)]
     pub fn process_tx(
         &self,
-        input: &TransactionData,
-        effects: &SuiTransactionBlockEffects,
         events: &SuiTransactionBlockEvents,
     ) -> SuiResult {
         trace!(
             num_events = events.data.len(),
-            tx_digest =? effects.transaction_digest(),
             "Processing tx/event subscription"
         );
 
-        if let Err(e) = self.transaction_streamer.try_send(EffectsWithInput {
-            input: input.clone(),
-            effects: effects.clone(),
-        }) {
-            error!(error =? e, "Failed to send transaction to dispatch");
-        }
+        // if let Err(e) = self.transaction_streamer.try_send(EffectsWithInput {
+        //     input: input.clone(),
+        //     effects: effects.clone(),
+        // }) {
+        //     error!(error =? e, "Failed to send transaction to dispatch");
+        // }
 
         // serially dispatch event processing to honor events' orders.
+        if let Err(e) = self.event_bandle_streamer.try_send(events.data.clone()) {
+            error!(error =? e, "Failed to send events bandle to dispatch");
+        }
         for event in events.data.clone() {
             if let Err(e) = self.event_streamer.try_send(event) {
                 error!(error =? e, "Failed to send event to dispatch");
@@ -114,6 +115,10 @@ impl SubscriptionHandler {
 
     pub fn subscribe_events(&self, filter: EventFilter) -> impl Stream<Item = SuiEvent> + use<> {
         self.event_streamer.subscribe(filter)
+    }
+
+    pub fn subscribe_events_bandle(&self, filter: EventBandleFilter) -> impl Stream<Item = Vec<SuiEvent>> {
+        self.event_bandle_streamer.subscribe(filter)
     }
 
     pub fn subscribe_transactions(
