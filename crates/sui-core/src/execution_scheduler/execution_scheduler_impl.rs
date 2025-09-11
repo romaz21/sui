@@ -228,18 +228,8 @@ impl ExecutionScheduler {
             .zip(availability)
             .filter_map(|(key, available)| if !available { Some(key) } else { None })
             .collect();
-
-        let has_missing_barrier_dependencies = self
-            .transaction_cache_read
-            .multi_get_executed_effects_digests(&execution_env.barrier_dependencies)
-            .into_iter()
-            .any(|r| r.is_none());
-
-        if missing_input_keys.is_empty() && !has_missing_barrier_dependencies {
-            self.metrics
-                .transaction_manager_num_enqueued_certificates
-                .with_label_values(&["ready"])
-                .inc();
+        
+        if missing_input_keys.is_empty() {
             debug!(?tx_digest, "Input objects already available");
             self.send_transaction_for_execution(&cert, execution_env, enqueue_time);
             return;
@@ -268,9 +258,6 @@ impl ExecutionScheduler {
             _ = self.object_cache_read
                 .notify_read_input_objects(&missing_input_keys, &receiving_object_keys, epoch)
                 => {
-                    self.metrics
-                        .transaction_manager_transaction_queue_age_s
-                        .observe(enqueue_time.elapsed().as_secs_f64());
                     debug!(?tx_digest, "Input objects available");
                     // TODO: Eventually we could fold execution_driver into the scheduler.
                     self.send_transaction_for_execution(
