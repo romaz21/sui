@@ -168,27 +168,15 @@ impl ExecutionScheduler {
             .filter_map(|(key, available)| if !available { Some(key) } else { None })
             .collect();
         if missing_input_keys.is_empty() {
-            self.metrics
-                .transaction_manager_num_enqueued_certificates
-                .with_label_values(&["ready"])
-                .inc();
             debug!(?tx_digest, "Input objects already available");
             self.send_transaction_for_execution(&cert, execution_env, enqueue_time);
             return;
         }
 
-        let _pending_guard = PendingGuard::new(&self, &cert);
-        self.metrics
-            .transaction_manager_num_enqueued_certificates
-            .with_label_values(&["pending"])
-            .inc();
         tokio::select! {
             _ = self.object_cache_read
                 .notify_read_input_objects(&missing_input_keys, &receiving_object_keys, epoch)
                 => {
-                    self.metrics
-                        .transaction_manager_transaction_queue_age_s
-                        .observe(enqueue_time.elapsed().as_secs_f64());
                     debug!(?tx_digest, "Input objects available");
                     // TODO: Eventually we could fold execution_driver into the scheduler.
                     self.send_transaction_for_execution(

@@ -1939,9 +1939,7 @@ impl AuthorityState {
                 self.metrics.limits_metrics.clone(),
                 // TODO: would be nice to pass the whole NodeConfig here, but it creates a
                 // cyclic dependency w/ sui-adapter
-                self.config
-                    .expensive_safety_check_config
-                    .enable_deep_per_tx_sui_conservation_check(),
+                false,
                 execution_params,
                 &epoch_store.epoch_start_config().epoch_data().epoch_id(),
                 epoch_store
@@ -1956,31 +1954,6 @@ impl AuthorityState {
                 tx_digest,
                 &mut None,
             );
-
-        fail_point_arg!("simulate_fork_during_execution", |(
-            forked_validators,
-            full_halt,
-            effects_overrides,
-            fork_probability,
-        ): (
-            std::sync::Arc<
-                std::sync::Mutex<std::collections::HashSet<sui_types::base_types::AuthorityName>>,
-            >,
-            bool,
-            std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, String>>>,
-            f32,
-        )| {
-            #[cfg(msim)]
-            self.simulate_fork_during_execution(
-                certificate,
-                epoch_store,
-                &mut effects,
-                forked_validators,
-                full_halt,
-                effects_overrides,
-                fork_probability,
-            );
-        });
 
         // index certificate
         let _ = self
