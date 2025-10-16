@@ -117,7 +117,7 @@ impl SubscriptionHandler {
         self.event_streamer.subscribe(filter)
     }
 
-    pub fn subscribe_events_bandle(&self, filter: EventBandleFilter) -> impl Stream<Item = Vec<SuiEvent>> {
+    pub fn subscribe_events_bandle(&self, filter: EventBandleFilter) -> impl Stream<Item = Vec<SuiEvent>> + use<> {
         self.event_bandle_streamer.subscribe(filter)
     }
 

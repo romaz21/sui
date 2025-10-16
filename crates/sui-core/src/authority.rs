@@ -2138,7 +2138,7 @@ impl AuthorityState {
             None,
             BalanceWithdrawStatus::NoWithdraw,
             epoch_store,
-        )?;
+        ).unwrap();
         Ok((transaction_outputs, execution_error_opt))
     }
 
@@ -5965,7 +5965,7 @@ impl AuthorityState {
             None,
             BalanceWithdrawStatus::NoWithdraw,
             epoch_store,
-        )?;
+        ).unwrap();
         let system_obj = get_sui_system_state(&transaction_outputs.written)
             .expect("change epoch tx must write to system object");
 

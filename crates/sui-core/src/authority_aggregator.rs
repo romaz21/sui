@@ -1292,7 +1292,7 @@ where
             move |mut state, name, weight, response| {
                 let committee_clone = committee.clone();
                 let metrics = metrics.clone();
-                let display_name = validator_display_names.get(&name).unwrap_or(&name.concise().to_string()).clone();
+                // let display_name = validator_display_names.get(&name).unwrap_or(&name.concise().to_string()).clone();
                 Box::pin(async move {
                     // We aggregate the effects response, until we have more than 2f
                     // and return.
@@ -1316,11 +1316,11 @@ where
                         Err(err) => {
                             let concise_name = name.concise();
                             debug!(?tx_digest, name=?concise_name, "Error processing certificate from validator: {:?}", err);
-                            metrics
-                                .process_cert_errors
-                                .with_label_values(&[&display_name, err.as_ref()])
-                                .inc();
-                            Self::record_rpc_error_maybe(metrics, &display_name, &err);
+                            // metrics
+                            //     .process_cert_errors
+                            //     .with_label_values(&[&display_name, err.as_ref()])
+                            //     .inc();
+                            // Self::record_rpc_error_maybe(metrics, &display_name, &err);
                             let (retryable, categorized) = err.is_retryable();
                             if !categorized {
                                 // TODO: Should minimize possible uncategorized errors here

@@ -298,33 +298,8 @@ where
             .into_tx();
         let tx_digest = *verified_transaction.digest();
 
-        // Early validation check against local state before submission to catch non-retriable errors
-        // TODO: Consider moving this check to TransactionDriver for per-retry validation
-        if self.enable_early_validation
-            && let Err(e) = self
-                .validator_state
-                .check_transaction_validity(&epoch_store, &verified_transaction)
-        {
-            let error_category = e.categorize();
-            if !error_category.is_submission_retriable() {
-                // Skip early validation rejection if transaction has already been executed (allows retries to return cached results)
-                if !self.validator_state.is_tx_already_executed(&tx_digest) {
-                    self.metrics
-                        .early_validation_rejections
-                        .with_label_values(&[e.to_variant_name()])
-                        .inc();
-                    debug!(
-                        error = ?e,
-                        "Transaction rejected during early validation"
-                    );
-
-                    return Err(QuorumDriverError::TransactionFailed {
-                        category: error_category,
-                        details: e.to_string(),
-                    });
-                }
-            }
-        }
+        // Add transaction to WAL log.
+        let is_new_transaction = true;
 
         // Add transaction to WAL log.
         let guard =
