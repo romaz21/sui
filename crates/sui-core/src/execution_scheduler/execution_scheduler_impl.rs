@@ -566,41 +566,11 @@ impl ExecutionScheduler {
         certs: Vec<(VerifiedExecutableTransaction, ExecutionEnv)>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) {
-        // Filter out certificates from wrong epoch.
-        let certs: Vec<_> = certs
-            .into_iter()
-            .filter_map(|cert| {
-                if cert.0.epoch() == epoch_store.epoch() {
-                    #[cfg(debug_assertions)]
-                    self.assert_cert_not_executed_previous_epochs(&cert.0);
-
-                    Some(cert)
-                } else {
-                    debug_fatal!(
-                        "We should never enqueue certificate from wrong epoch. Expected={} Certificate={:?}",
-                        epoch_store.epoch(),
-                        cert.0.epoch()
-                    );
-                    None
-                }
-            })
-            .collect();
-        let digests: Vec<_> = certs.iter().map(|(cert, _)| *cert.digest()).collect();
-        let executed = self
-            .transaction_cache_read
-            .multi_get_executed_effects_digests(&digests);
-        let mut already_executed_certs_num = 0;
         let pending_certs =
             certs
                 .into_iter()
-                .zip(executed)
-                .filter_map(|((cert, execution_env), executed)| {
-                    if executed.is_none() {
+                .filter_map(|(cert, execution_env)| {
                         Some((cert, execution_env))
-                    } else {
-                        already_executed_certs_num += 1;
-                        None
-                    }
                 });
 
         for (cert, execution_env) in pending_certs {
@@ -614,11 +584,6 @@ impl ExecutionScheduler {
                 ))
             );
         }
-
-        self.metrics
-            .transaction_manager_num_enqueued_certificates
-            .with_label_values(&["already_executed"])
-            .inc_by(already_executed_certs_num);
     }
 
     pub fn settle_funds(&self, settlement: FundsSettlement) {
