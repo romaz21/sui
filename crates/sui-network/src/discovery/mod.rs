@@ -523,11 +523,11 @@ fn update_known_peers(
         }
 
         // If Peer is Private, and not in our allowlist, skip it.
-        if peer_info.access_type == AccessType::Private
-            && !allowlisted_peers.contains_key(&peer_info.peer_id)
-        {
-            continue;
-        }
+        // if peer_info.access_type == AccessType::Private
+        //     && !allowlisted_peers.contains_key(&peer_info.peer_id)
+        // {
+        //     continue;
+        // }
 
         // Skip entries that have too many addresses as a means to cap the size of a node's info
         if peer_info.addresses.len() > MAX_ADDRESSES_PER_PEER {
