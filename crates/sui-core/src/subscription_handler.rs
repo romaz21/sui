@@ -76,7 +76,7 @@ impl SubscriptionHandler {
     pub fn new(registry: &Registry) -> Self {
         let metrics = Arc::new(SubscriptionMetrics::new(registry));
         Self {
-            event_bandle_streamer: Streamer::spawn(EVENT_DISPATCH_BUFFER_SIZE, metrics.clone(), "event"),
+            event_bandle_streamer: Streamer::spawn(10*EVENT_DISPATCH_BUFFER_SIZE, metrics.clone(), "event"),
             event_streamer: Streamer::spawn(EVENT_DISPATCH_BUFFER_SIZE, metrics.clone(), "event"),
             transaction_streamer: Streamer::spawn(EVENT_DISPATCH_BUFFER_SIZE, metrics, "tx"),
         }
@@ -102,8 +102,11 @@ impl SubscriptionHandler {
         // }
 
         // serially dispatch event processing to honor events' orders.
-        if let Err(e) = self.event_bandle_streamer.try_send(events.data.clone()) {
-            error!(error =? e, "Failed to send events bandle to dispatch");
+        let c_events = events.data.clone();
+        if !c_events.is_empty() {
+            if let Err(e) = self.event_bandle_streamer.try_send(c_events) {
+                error!(error =? e, "Failed to send events bandle to dispatch");
+            }
         }
         for event in events.data.clone() {
             if let Err(e) = self.event_streamer.try_send(event) {

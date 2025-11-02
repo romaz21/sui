@@ -128,9 +128,9 @@ where
             client_monitor,
         });
 
-        let driver_clone = driver.clone();
+        // let driver_clone = driver.clone();
 
-        spawn_logged_monitored_task!(Self::run_latency_checks(driver_clone));
+        // spawn_logged_monitored_task!(Self::run_latency_checks(driver_clone));
 
         driver.enable_reconfig(reconfig_observer);
         driver

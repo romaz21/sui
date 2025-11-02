@@ -1843,19 +1843,7 @@ impl AuthorityState {
             Err(e) => return ExecutionOutput::Fatal(e),
         };
 
-        let expected_effects_digest = match execution_env.expected_effects_digest {
-            Some(expected_effects_digest) => Some(expected_effects_digest),
-            None => {
-                // We could be re-executing a previously executed but uncommitted transaction, perhaps after
-                // restarting with a new binary. In this situation, if we have published an effects signature,
-                // we must be sure not to equivocate.
-                // TODO: read from cache instead of DB
-                match epoch_store.get_signed_effects_digest(&tx_digest) {
-                    Ok(digest) => digest,
-                    Err(e) => return ExecutionOutput::Fatal(e),
-                }
-            }
-        };
+        let expected_effects_digest = None;
 
         fail_point_if!("correlated-crash-process-certificate", || {
             if sui_simulator::random::deterministic_probability_once(&tx_digest, 0.01) {
@@ -2010,16 +1998,7 @@ impl AuthorityState {
         let protocol_config = epoch_store.protocol_config();
         let transaction_data = &certificate.data().intent_message().value;
         let (kind, signer, gas_data) = transaction_data.execution_parts();
-        let early_execution_error = get_early_execution_error(
-            &tx_digest,
-            &input_objects,
-            self.config.certificate_deny_config.certificate_deny_set(),
-            &execution_env.funds_withdraw_status,
-        );
-        let execution_params = match early_execution_error {
-            Some(error) => ExecutionOrEarlyError::Err(error),
-            None => ExecutionOrEarlyError::Ok(()),
-        };
+        let execution_params = ExecutionOrEarlyError::Ok(());
 
         let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
 
@@ -2072,13 +2051,6 @@ impl AuthorityState {
             );
         });
 
-        let unchanged_loaded_runtime_objects =
-            crate::transaction_outputs::unchanged_loaded_runtime_objects(
-                certificate.transaction_data(),
-                &effects,
-                &tracking_store.into_read_objects(),
-            );
-
         // index certificate
         let _ = self
             .post_process_one_tx(certificate, &effects, &inner_temp_store, epoch_store)
@@ -2087,6 +2059,13 @@ impl AuthorityState {
                 error!(?tx_digest, "tx post processing failed: {e}");
             });
 
+
+        let unchanged_loaded_runtime_objects =
+            crate::transaction_outputs::unchanged_loaded_runtime_objects(
+                certificate.transaction_data(),
+                &effects,
+                &tracking_store.into_read_objects(),
+            );
 
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
@@ -3172,12 +3151,6 @@ impl AuthorityState {
         let tx_digest = certificate.digest();
         let timestamp_ms = Self::unixtime_now_ms();
         let events = &inner_temporary_store.events;
-        let written = &inner_temporary_store.written;
-        let tx_coins = self.fullnode_only_get_tx_coins_for_indexing(
-            effects,
-            inner_temporary_store,
-            epoch_store,
-        );
 
         // Index tx
         if let Some(indexes) = &self.indexes {
@@ -3192,11 +3165,6 @@ impl AuthorityState {
             // Emit events
             self.subscription_handler
                 .process_tx(&events2)
-                // .tap_ok(|_| {
-                //     self.metrics
-                //         .post_processing_total_tx_had_event_processed
-                //         .inc()
-                // })
                 .tap_err(|e| {
                     warn!(
                         ?tx_digest,
@@ -3204,6 +3172,12 @@ impl AuthorityState {
                     )
                 })?;
             
+            let written = &inner_temporary_store.written;
+            let tx_coins = self.fullnode_only_get_tx_coins_for_indexing(
+                effects,
+                inner_temporary_store,
+                epoch_store,
+            );
             let _ = self
                 .index_tx(
                     indexes.as_ref(),
@@ -5953,7 +5927,7 @@ impl AuthorityState {
             None,
             BalanceWithdrawStatus::NoWithdraw,
             epoch_store,
-        )?;
+        ).unwrap();
 
         let system_obj = get_sui_system_state(&transaction_outputs.written)
             .expect("change epoch tx must write to system object");
