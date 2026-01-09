@@ -5925,7 +5925,7 @@ impl AuthorityState {
             &executable_tx,
             input_objects,
             None,
-            BalanceWithdrawStatus::NoWithdraw,
+            ExecutionEnv::default(),
             epoch_store,
         ).unwrap();
 
