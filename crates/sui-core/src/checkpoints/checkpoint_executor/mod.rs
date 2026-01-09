@@ -641,8 +641,7 @@ impl CheckpointExecutor {
             tx_data,
             self.state.get_object_store(),
             &*self.transaction_cache_reader,
-        )
-        .expect("failed to load checkpoint data");
+        ).ok()?;
 
         if self.state.rpc_index.is_some() || self.config.data_ingestion_dir.is_some() {
             let checkpoint_data = checkpoint.clone().into();
