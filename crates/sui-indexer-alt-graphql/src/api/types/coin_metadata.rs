@@ -30,8 +30,11 @@ use crate::api::scalars::big_int::BigInt;
 use crate::api::scalars::sui_address::SuiAddress;
 use crate::api::scalars::type_filter::TypeInput;
 use crate::api::scalars::uint53::UInt53;
+use crate::api::types::address;
+use crate::api::types::address::Address;
 use crate::api::types::balance::Balance;
 use crate::api::types::balance::{self as balance};
+use crate::api::types::dynamic_field;
 use crate::api::types::dynamic_field::DynamicField;
 use crate::api::types::dynamic_field::DynamicFieldName;
 use crate::api::types::move_object::MoveObject;
@@ -116,6 +119,18 @@ impl CoinMetadata {
         self.super_.address(ctx).await
     }
 
+    /// Fetch the address as it was at a different root version, or checkpoint.
+    ///
+    /// If no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.
+    pub(crate) async fn address_at(
+        &self,
+        ctx: &Context<'_>,
+        root_version: Option<UInt53>,
+        checkpoint: Option<UInt53>,
+    ) -> Result<Option<Address>, RpcError<address::Error>> {
+        self.super_.address_at(ctx, root_version, checkpoint).await
+    }
+
     /// The version of this object that this content comes from.
     pub(crate) async fn version(&self, ctx: &Context<'_>) -> Option<Result<UInt53, RpcError>> {
         self.super_.version(ctx).await.ok()?
@@ -196,7 +211,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         self.super_.dynamic_field(ctx, name).await
     }
 
@@ -223,7 +238,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         self.super_.dynamic_object_field(ctx, name).await
     }
 
@@ -256,7 +271,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         self.super_.multi_get_dynamic_fields(ctx, keys).await
     }
 
@@ -267,7 +282,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         self.super_.multi_get_dynamic_object_fields(ctx, keys).await
     }
 
@@ -444,7 +459,7 @@ impl CoinMetadata {
                     regulated_state: Some(RegulatedState::Regulated),
                     allow_global_pause: *allow_global_pause,
                     deny_cap: Some(MoveObject::from_super(Object::with_address(
-                        scope.without_root_version(),
+                        scope.without_root_bound(),
                         (*cap).into(),
                     ))),
                 });
@@ -468,8 +483,7 @@ impl CoinMetadata {
         }
 
         let type_ = RegulatedCoinMetadata::type_(*coin_type.clone());
-        let Some(object) = Object::singleton(ctx, scope.without_root_version(), type_).await?
-        else {
+        let Some(object) = Object::singleton(ctx, scope.without_root_bound(), type_).await? else {
             // If there is no RegulatedCoinMetadata object, the coin is unregulated.
             return Ok(RegulatedFields {
                 regulated_state: Some(RegulatedState::Unregulated),
@@ -500,7 +514,7 @@ impl CoinMetadata {
             regulated_state: Some(RegulatedState::Regulated),
             allow_global_pause: None,
             deny_cap: Some(MoveObject::from_super(Object::with_address(
-                scope.without_root_version(),
+                scope.without_root_bound(),
                 metadata.deny_cap_object.bytes.into(),
             ))),
         })
@@ -555,7 +569,7 @@ impl CoinMetadata {
         }
 
         let type_ = TreasuryCap::type_(*coin_type.clone());
-        let scope = self.super_.super_.super_.scope.without_root_version();
+        let scope = self.super_.super_.super_.scope.without_root_bound();
         let Some(object) = Object::singleton(ctx, scope, type_).await? else {
             return Ok(SupplyFields::default());
         };

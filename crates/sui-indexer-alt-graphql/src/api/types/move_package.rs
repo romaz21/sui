@@ -39,6 +39,8 @@ use crate::api::scalars::id::Id;
 use crate::api::scalars::sui_address::SuiAddress;
 use crate::api::scalars::type_filter::TypeInput;
 use crate::api::scalars::uint53::UInt53;
+use crate::api::types::address;
+use crate::api::types::address::Address;
 use crate::api::types::balance::Balance;
 use crate::api::types::balance::{self as balance};
 use crate::api::types::linkage::Linkage;
@@ -59,9 +61,11 @@ use crate::api::types::type_origin::TypeOrigin;
 use crate::error::RpcError;
 use crate::error::bad_user_input;
 use crate::error::upcast;
+use crate::extensions::query_limits;
 use crate::pagination::Page;
 use crate::pagination::PaginationConfig;
 use crate::scope::Scope;
+use crate::task::watermark::Watermarks;
 
 #[derive(Clone)]
 pub(crate) struct MovePackage {
@@ -77,7 +81,7 @@ pub(crate) struct MovePackage {
 
 /// Identifies a specific version of a package.
 ///
-/// The `address` field must be specified, as well as at most one of `version`, or `atCheckpoint`. If neither is provided, the package is fetched at the current checkpoint.
+/// The `address` field must be specified, as well as at most one of `version`, or `atCheckpoint`. If neither is provided, the package is fetched at the checkpoint being viewed.
 ///
 /// See `Query.package` for more details.
 #[derive(InputObject, Debug, Clone, Eq, PartialEq)]
@@ -142,6 +146,18 @@ impl MovePackage {
     /// The MovePackage's ID.
     pub(crate) async fn address(&self, ctx: &Context<'_>) -> Result<SuiAddress, RpcError> {
         self.super_.address(ctx).await
+    }
+
+    /// Fetch the address as it was at a different root version, or checkpoint.
+    ///
+    /// If no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.
+    pub(crate) async fn address_at(
+        &self,
+        ctx: &Context<'_>,
+        root_version: Option<UInt53>,
+        checkpoint: Option<UInt53>,
+    ) -> Result<Option<Address>, RpcError<address::Error>> {
+        self.super_.address_at(ctx, root_version, checkpoint).await
     }
 
     /// The version of this package that this content comes from.
@@ -369,24 +385,24 @@ impl MovePackage {
         self.super_.owner(ctx).await.ok()?
     }
 
-    /// Fetch the package with the same original ID, at a different version, root version bound, or checkpoint.
+    /// Fetch the package with the same original ID, at a different version, or checkpoint.
     ///
-    /// If no additional bound is provided, the latest version of this package is fetched at the latest checkpoint.
+    /// If no additional bound is provided, the package is fetched at the latest checkpoint known to the RPC.
     async fn package_at(
         &self,
         ctx: &Context<'_>,
         version: Option<UInt53>,
         checkpoint: Option<UInt53>,
     ) -> Option<Result<MovePackage, RpcError<Error>>> {
-        MovePackage::by_key(
-            ctx,
-            self.super_.super_.scope.clone(),
-            PackageKey {
+        async {
+            let key = PackageKey {
                 address: self.super_.super_.address.into(),
                 version,
                 at_checkpoint: checkpoint,
-            },
-        )
+            };
+
+            MovePackage::by_key(ctx, Scope::new(ctx)?, key).await
+        }
         .await
         .transpose()
     }
@@ -614,10 +630,13 @@ impl MovePackage {
                 .await
                 .map_err(upcast)
         } else if let Some(cp) = key.at_checkpoint {
-            let scope = scope
-                .with_checkpoint_viewed_at(cp.into())
-                .ok_or_else(|| bad_user_input(Error::Future(cp.into())))?;
+            // Validate checkpoint isn't in the future
+            let watermark: &Arc<Watermarks> = ctx.data()?;
+            if u64::from(cp) > watermark.high_watermark().checkpoint() {
+                return Err(bad_user_input(Error::Future(cp.into())));
+            }
 
+            // checkpoint_bounded sets the root checkpoint bound
             Self::checkpoint_bounded(ctx, scope, key.address, cp)
                 .await
                 .map_err(upcast)
@@ -695,7 +714,10 @@ impl MovePackage {
             return Ok(None);
         };
 
-        Self::from_stored(scope, stored_package)
+        Self::from_stored(
+            scope.with_root_checkpoint(at_checkpoint.into()),
+            stored_package,
+        )
     }
 
     /// Construct a GraphQL representation of a `MovePackage` from its representation in the
@@ -745,8 +767,9 @@ impl MovePackage {
             return Ok(Connection::new(false, false));
         };
 
-        let pg_loader: &Arc<DataLoader<PgReader>> = ctx.data()?;
+        query_limits::rich::debit(ctx)?;
         let pg_reader: &PgReader = ctx.data()?;
+        let pg_loader: &Arc<DataLoader<PgReader>> = ctx.data()?;
 
         let Some(original_id) = pg_loader
             .load_one(PackageOriginalIdKey(address.into()))
@@ -835,6 +858,7 @@ impl MovePackage {
             return Ok(Connection::new(false, false));
         };
 
+        query_limits::rich::debit(ctx)?;
         let pg_reader: &PgReader = ctx.data()?;
 
         let mut query = p::kv_packages
@@ -915,6 +939,7 @@ impl MovePackage {
         page: Page<CSysPackage>,
         checkpoint: u64,
     ) -> Result<Connection<String, MovePackage>, RpcError> {
+        query_limits::rich::debit(ctx)?;
         let pg_reader: &PgReader = ctx.data()?;
 
         let mut pagination = query!("");

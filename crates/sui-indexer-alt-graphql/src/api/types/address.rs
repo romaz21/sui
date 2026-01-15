@@ -1,8 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use async_graphql::Context;
 use async_graphql::Enum;
+use async_graphql::InputObject;
 use async_graphql::Interface;
 use async_graphql::Object;
 use async_graphql::connection::Connection;
@@ -15,9 +18,11 @@ use crate::api::scalars::id::Id;
 use crate::api::scalars::owner_kind::OwnerKind;
 use crate::api::scalars::sui_address::SuiAddress;
 use crate::api::scalars::type_filter::TypeInput;
+use crate::api::scalars::uint53::UInt53;
 use crate::api::types::balance::Balance;
 use crate::api::types::balance::{self as balance};
 use crate::api::types::coin_metadata::CoinMetadata;
+use crate::api::types::dynamic_field;
 use crate::api::types::dynamic_field::DynamicField;
 use crate::api::types::dynamic_field::DynamicFieldName;
 use crate::api::types::move_object::MoveObject;
@@ -32,11 +37,12 @@ use crate::api::types::transaction::CTransaction;
 use crate::api::types::transaction::Transaction;
 use crate::api::types::transaction::filter::TransactionFilter;
 use crate::api::types::transaction::filter::TransactionFilterValidator as TFValidator;
-use crate::api::types::validator::Validator;
 use crate::error::RpcError;
+use crate::error::bad_user_input;
 use crate::pagination::Page;
 use crate::pagination::PaginationConfig;
 use crate::scope::Scope;
+use crate::task::watermark::Watermarks;
 
 /// The possible relationship types for a transaction: sent or affected.
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -55,6 +61,13 @@ pub(crate) enum AddressTransactionRelationship {
 #[graphql(
     name = "IAddressable",
     field(name = "address", ty = "SuiAddress"),
+    field(
+        name = "address_at",
+        arg(name = "root_version", ty = "Option<UInt53>"),
+        arg(name = "checkpoint", ty = "Option<UInt53>"),
+        ty = "Result<Option<Address>, RpcError<Error>>",
+        desc = "Fetch the address as it was at a different root version, or checkpoint.\n\nIf no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.",
+    ),
     field(
         name = "balance",
         arg(name = "coin_type", ty = "TypeInput"),
@@ -99,13 +112,40 @@ pub(crate) enum IAddressable {
     MoveObject(MoveObject),
     MovePackage(MovePackage),
     Object(Object),
-    Validator(Validator),
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct Address {
     pub(crate) scope: Scope,
     pub(crate) address: NativeSuiAddress,
+}
+
+/// Identifies a specific version of an address.
+///
+/// The `address` field must be specified, as well as at most one of `rootVersion`, or `atCheckpoint`. If neither is provided, the package is fetched at the checkpoint being viewed.
+///
+/// See `Query.address` for more details.
+#[derive(InputObject, Debug, Clone, Eq, PartialEq)]
+pub(crate) struct AddressKey {
+    /// The address.
+    pub(crate) address: SuiAddress,
+
+    /// If specified, sets a root version bound for this address.
+    pub(crate) root_version: Option<UInt53>,
+
+    /// If specified, sets a checkpoint bound for this address.
+    pub(crate) at_checkpoint: Option<UInt53>,
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
+pub(crate) enum Error {
+    #[error("Checkpoint {0} in the future")]
+    Future(u64),
+
+    #[error(
+        "At most one of a root version, or a checkpoint bound can be specified when fetching an address"
+    )]
+    OneBound,
 }
 
 #[Object]
@@ -118,6 +158,26 @@ impl Address {
     /// The Address' identifier, a 32-byte number represented as a 64-character hex string, with a lead "0x".
     pub(crate) async fn address(&self) -> Result<SuiAddress, RpcError> {
         Ok(self.address.into())
+    }
+
+    /// Fetch the address as it was at a different root version, or checkpoint.
+    ///
+    /// If no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.
+    pub(crate) async fn address_at(
+        &self,
+        ctx: &Context<'_>,
+        root_version: Option<UInt53>,
+        checkpoint: Option<UInt53>,
+    ) -> Result<Option<Address>, RpcError<Error>> {
+        Ok(Some(Address::by_key(
+            ctx,
+            Scope::new(ctx)?,
+            AddressKey {
+                address: self.address.into(),
+                root_version,
+                at_checkpoint: checkpoint,
+            },
+        )?))
     }
 
     /// Attempts to fetch the object at this address.
@@ -190,7 +250,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.scope.clone(),
@@ -229,7 +289,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.scope.clone(),
@@ -247,7 +307,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -267,7 +327,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -382,6 +442,34 @@ impl Address {
 }
 
 impl Address {
+    /// Fetch an address by its key. The key can either specify a root version bound, or a
+    /// checkpoint bound, or neither.
+    pub(crate) fn by_key(
+        ctx: &Context<'_>,
+        scope: Scope,
+        key: AddressKey,
+    ) -> Result<Self, RpcError<Error>> {
+        let bounds = key.root_version.is_some() as u8 + key.at_checkpoint.is_some() as u8;
+
+        if bounds > 1 {
+            Err(bad_user_input(Error::OneBound))
+        } else if let Some(v) = key.root_version {
+            let scope = scope.with_root_version(v.into());
+            Ok(Self::with_address(scope, key.address.into()))
+        } else if let Some(cp) = key.at_checkpoint {
+            // Validate checkpoint isn't in the future
+            let watermark: &Arc<Watermarks> = ctx.data()?;
+            if u64::from(cp) > watermark.high_watermark().checkpoint() {
+                return Err(bad_user_input(Error::Future(cp.into())));
+            }
+
+            let scope = scope.with_root_checkpoint(cp.into());
+            Ok(Self::with_address(scope, key.address.into()))
+        } else {
+            Ok(Self::with_address(scope, key.address.into()))
+        }
+    }
+
     /// Construct an address that is represented by just its identifier (`SuiAddress`).
     /// This does not check whether the address is valid or exists in the system.
     pub(crate) fn with_address(scope: Scope, address: NativeSuiAddress) -> Self {

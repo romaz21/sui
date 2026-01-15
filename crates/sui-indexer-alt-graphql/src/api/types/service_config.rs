@@ -193,6 +193,18 @@ impl ServiceConfig {
         Ok(Some(limits.max_display_field_depth))
     }
 
+    /// Maximum number of components in a Display v2 format string.
+    async fn max_display_format_nodes(&self, ctx: &Context<'_>) -> Result<Option<usize>, RpcError> {
+        let limits: &Limits = ctx.data()?;
+        Ok(Some(limits.max_display_format_nodes))
+    }
+
+    /// Maximum number of objects that can be loaded while evaluating a display.
+    async fn max_display_object_loads(&self, ctx: &Context<'_>) -> Result<Option<usize>, RpcError> {
+        let limits: &Limits = ctx.data()?;
+        Ok(Some(limits.max_display_object_loads))
+    }
+
     /// Maximum output size of a display output.
     async fn max_display_output_size(&self, ctx: &Context<'_>) -> Result<Option<usize>, RpcError> {
         let limits: &Limits = ctx.data()?;
@@ -206,6 +218,12 @@ impl ServiceConfig {
     ) -> Result<Option<usize>, RpcError> {
         let limits: &Limits = ctx.data()?;
         Ok(Some(limits.max_disassembled_module_size))
+    }
+
+    /// Maximum number of paginated fields that can return results in a single request. Queries on paginated fields that exceed this limit will return an error.
+    async fn max_rich_queries(&self, ctx: &Context<'_>) -> Result<Option<usize>, RpcError> {
+        let limits: &Limits = ctx.data()?;
+        Ok(Some(limits.max_rich_queries))
     }
 
     /// Range of checkpoints for which data is available for a query type, field and optional filter. If filter is not provided, the strictest retention range for the query and type is returned.

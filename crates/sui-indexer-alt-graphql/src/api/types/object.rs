@@ -51,10 +51,12 @@ use crate::api::scalars::sui_address::SuiAddress;
 use crate::api::scalars::type_filter::TypeFilter;
 use crate::api::scalars::type_filter::TypeInput;
 use crate::api::scalars::uint53::UInt53;
+use crate::api::types::address;
 use crate::api::types::address::Address;
 use crate::api::types::balance::Balance;
 use crate::api::types::balance::{self as balance};
 use crate::api::types::coin_metadata::CoinMetadata;
+use crate::api::types::dynamic_field;
 use crate::api::types::dynamic_field::DynamicField;
 use crate::api::types::dynamic_field::DynamicFieldName;
 use crate::api::types::move_object::MoveObject;
@@ -69,11 +71,13 @@ use crate::error::RpcError;
 use crate::error::bad_user_input;
 use crate::error::feature_unavailable;
 use crate::error::upcast;
+use crate::extensions::query_limits;
 use crate::intersect;
 use crate::pagination::Page;
 use crate::pagination::PageLimits;
 use crate::pagination::PaginationConfig;
 use crate::scope::Scope;
+use crate::task::watermark::Watermarks;
 
 /// Interface implemented by versioned on-chain values that are addressable by an ID (also referred to as its address). This includes Move objects and packages.
 #[allow(clippy::duplicated_attributes)]
@@ -247,6 +251,18 @@ impl Object {
         self.super_.address(ctx).await
     }
 
+    /// Fetch the address as it was at a different root version, or checkpoint.
+    ///
+    /// If no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.
+    pub(crate) async fn address_at(
+        &self,
+        ctx: &Context<'_>,
+        root_version: Option<UInt53>,
+        checkpoint: Option<UInt53>,
+    ) -> Result<Option<Address>, RpcError<address::Error>> {
+        self.super_.address_at(ctx, root_version, checkpoint).await
+    }
+
     /// The version of this object that this content comes from.
     pub(crate) async fn version(&self, ctx: &Context<'_>) -> Option<Result<UInt53, RpcError>> {
         if let Some((version, _)) = self.version_digest {
@@ -331,7 +347,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError<Error>> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.super_.scope.clone(),
@@ -340,7 +356,6 @@ impl Object {
             name,
         )
         .await
-        .map_err(upcast)
     }
 
     /// Dynamic fields owned by this object.
@@ -374,7 +389,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError<Error>> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.super_.scope.clone(),
@@ -383,7 +398,6 @@ impl Object {
             name,
         )
         .await
-        .map_err(upcast)
     }
 
     /// Access dynamic fields on an object using their types and BCS-encoded names.
@@ -393,7 +407,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError<Error>> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -404,7 +418,6 @@ impl Object {
             )
         }))
         .await
-        .map_err(upcast)
     }
 
     /// Access dynamic object fields on an object using their types and BCS-encoded names.
@@ -414,7 +427,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError<Error>> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -425,7 +438,6 @@ impl Object {
             )
         }))
         .await
-        .map_err(upcast)
     }
 
     /// Fetch the total balances keyed by coin types (e.g. `0x2::sui::SUI`) owned by this address.
@@ -442,7 +454,7 @@ impl Object {
 
     /// Fetch the object with the same ID, at a different version, root version bound, or checkpoint.
     ///
-    /// If no additional bound is provided, the latest version of this object is fetched at the latest checkpoint.
+    /// If no additional bound is provided, the object is fetched at the latest checkpoint known to the RPC.
     pub(crate) async fn object_at(
         &self,
         ctx: &Context<'_>,
@@ -450,16 +462,18 @@ impl Object {
         root_version: Option<UInt53>,
         checkpoint: Option<UInt53>,
     ) -> Option<Result<Self, RpcError<Error>>> {
-        let key = ObjectKey {
-            address: self.super_.address.into(),
-            version,
-            root_version,
-            at_checkpoint: checkpoint,
-        };
+        async {
+            let key = ObjectKey {
+                address: self.super_.address.into(),
+                version,
+                root_version,
+                at_checkpoint: checkpoint,
+            };
 
-        Object::by_key(ctx, self.super_.scope.without_root_version(), key)
-            .await
-            .transpose()
+            Object::by_key(ctx, Scope::new(ctx)?, key).await
+        }
+        .await
+        .transpose()
     }
 
     /// The Base64-encoded BCS serialization of this object, as an `Object`.
@@ -506,7 +520,7 @@ impl Object {
 
             Object::paginate_by_version(
                 ctx,
-                self.super_.scope.without_root_version(),
+                self.super_.scope.without_root_bound(),
                 page,
                 self.super_.address,
                 filter,
@@ -547,7 +561,7 @@ impl Object {
 
             Object::paginate_by_version(
                 ctx,
-                self.super_.scope.without_root_version(),
+                self.super_.scope.without_root_bound(),
                 page,
                 self.super_.address,
                 filter,
@@ -599,7 +613,7 @@ impl Object {
         };
 
         Some(Ok(Transaction::with_digest(
-            self.super_.scope.without_root_version(),
+            self.super_.scope.without_root_bound(),
             contents.previous_transaction,
         )))
     }
@@ -720,9 +734,11 @@ impl Object {
                 .await
                 .map_err(upcast)
         } else if let Some(cp) = key.at_checkpoint {
-            let scope = scope
-                .with_checkpoint_viewed_at(cp.into())
-                .ok_or_else(|| bad_user_input(Error::Future(cp.into())))?;
+            // Validate checkpoint isn't in the future
+            let watermark: &Arc<Watermarks> = ctx.data()?;
+            if u64::from(cp) > watermark.high_watermark().checkpoint() {
+                return Err(bad_user_input(Error::Future(cp.into())));
+            }
 
             Self::checkpoint_bounded(ctx, scope, key.address, cp)
                 .await
@@ -732,9 +748,29 @@ impl Object {
         }
     }
 
+    /// Get the latest version of the object at the given address, respecting any root bounds in
+    /// scope.
+    ///
+    /// If a root version bound is set, fetches the object at that version.
+    /// Otherwise, fetches the object at the root checkpoint (which falls back to the checkpoint
+    /// being viewed).
+    pub(crate) async fn latest(
+        ctx: &Context<'_>,
+        scope: Scope,
+        address: SuiAddress,
+    ) -> Result<Option<Self>, RpcError> {
+        if let Some(version) = scope.root_version() {
+            Self::version_bounded(ctx, scope, address, version.into()).await
+        } else if let Some(cp) = scope.root_checkpoint() {
+            Self::checkpoint_bounded(ctx, scope, address, cp.into()).await
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Fetch the latest version of the object at the given address less than or equal to
     /// `root_version`.
-    pub(crate) async fn version_bounded(
+    async fn version_bounded(
         ctx: &Context<'_>,
         scope: Scope,
         address: SuiAddress,
@@ -756,23 +792,9 @@ impl Object {
         Object::from_stored_version(scope.with_root_version(root_version.into()), stored)
     }
 
-    /// Get the latest version of the object at the given address, as of the latest checkpoint
-    /// according to `scope`.
-    pub(crate) async fn latest(
-        ctx: &Context<'_>,
-        scope: Scope,
-        address: SuiAddress,
-    ) -> Result<Option<Self>, RpcError> {
-        let Some(cp) = scope.checkpoint_viewed_at() else {
-            return Ok(None);
-        };
-
-        Self::checkpoint_bounded(ctx, scope, address, cp.into()).await
-    }
-
     /// Fetch the latest version of the object at the given address as of the checkpoint with
     /// sequence number `at_checkpoint`.
-    pub(crate) async fn checkpoint_bounded(
+    async fn checkpoint_bounded(
         ctx: &Context<'_>,
         scope: Scope,
         address: SuiAddress,
@@ -791,7 +813,7 @@ impl Object {
             return Ok(None);
         };
 
-        Object::from_stored_version(scope, stored)
+        Object::from_stored_version(scope.with_root_checkpoint(at_checkpoint.into()), stored)
     }
 
     /// Load the object at the given ID and version from the store, and return it fully inflated
@@ -914,6 +936,7 @@ impl Object {
             return Ok(Connection::new(false, false));
         };
 
+        query_limits::rich::debit(ctx)?;
         let pg_reader: &PgReader = ctx.data()?;
 
         let mut query = v::obj_versions
@@ -996,27 +1019,29 @@ impl Object {
         if scope.root_version().is_some() {
             return Err(bad_user_input(Error::RootVersionOwnership));
         }
-        let Some(checkpoint_viewed_at) = scope.checkpoint_viewed_at() else {
+
+        let Some(root_checkpoint) = scope.root_checkpoint() else {
             return Ok(Connection::new(false, false));
         };
 
+        query_limits::rich::debit(ctx)?;
         let consistent_reader: &ConsistentReader = ctx.data()?;
 
         // Figure out which checkpoint to pin results to, based on the pagination cursors and
-        // defaulting to the current scope. If both cursors are provided, they must agree on the
-        // checkpoint they are pinning, and this checkpoint must be at or below the scope's latest
-        // checkpoint.
+        // defaulting to the root checkpoint bound. If both cursors are provided, they must agree
+        // on the checkpoint they are pinning, and this checkpoint must be at or below the scope's
+        // root checkpoint.
         let checkpoint = match (page.after(), page.before()) {
             (Some(a), Some(b)) if a.0 != b.0 => {
                 return Err(bad_user_input(Error::CursorInconsistency(a.0, b.0)));
             }
-            (None, None) => checkpoint_viewed_at,
+            (None, None) => root_checkpoint,
             (Some(c), _) | (_, Some(c)) => c.0,
         };
 
         // Set the checkpoint being viewed to the one calculated from the cursors, so that
         // nested queries about the resulting objects also treat this checkpoint as latest.
-        let Some(scope) = scope.with_checkpoint_viewed_at(checkpoint) else {
+        let Some(scope) = scope.with_checkpoint_viewed_at(ctx, checkpoint) else {
             return Err(bad_user_input(Error::Future(checkpoint)));
         };
 
