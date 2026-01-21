@@ -3682,6 +3682,7 @@ impl AuthorityState {
             .protocol_config()
             .enable_multi_epoch_transaction_expiration()
             && epoch_store.epoch() > 0
+            && false
         {
             use typed_store::Map;
             let previous_epoch = epoch_store.epoch() - 1;
