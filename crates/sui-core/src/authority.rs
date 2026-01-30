@@ -3580,7 +3580,7 @@ impl AuthorityState {
         firewall_config: Option<RemoteFirewallConfig>,
         pruner_watermarks: Arc<PrunerWatermarks>,
     ) -> Arc<Self> {
-        Self::check_protocol_version(supported_protocol_versions, epoch_store.protocol_version());
+        // Self::check_protocol_version(supported_protocol_versions, epoch_store.protocol_version());
 
         let metrics = Arc::new(AuthorityMetrics::new(prometheus_registry));
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
@@ -3908,12 +3908,12 @@ impl AuthorityState {
         expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
         epoch_last_checkpoint: CheckpointSequenceNumber,
     ) -> SuiResult<Arc<AuthorityPerEpochStore>> {
-        Self::check_protocol_version(
-            supported_protocol_versions,
-            epoch_start_configuration
-                .epoch_start_state()
-                .protocol_version(),
-        );
+        // Self::check_protocol_version(
+        //     supported_protocol_versions,
+        //     epoch_start_configuration
+        //         .epoch_start_state()
+        //         .protocol_version(),
+        // );
 
         self.committee_store.insert_new_committee(&new_committee)?;
 
