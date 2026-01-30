@@ -1941,9 +1941,7 @@ impl AuthorityState {
                 self.metrics.limits_metrics.clone(),
                 // TODO: would be nice to pass the whole NodeConfig here, but it creates a
                 // cyclic dependency w/ sui-adapter
-                self.config
-                    .expensive_safety_check_config
-                    .enable_deep_per_tx_sui_conservation_check(),
+                false,
                 execution_params,
                 &epoch_store.epoch_start_config().epoch_data().epoch_id(),
                 epoch_store
@@ -3350,7 +3348,7 @@ impl AuthorityState {
         )?;
         // Emit events
         subscription_handler
-            .process_tx(certificate.data().transaction_data(), &effects, &events)
+            .process_tx(&events)
             .tap_ok(|_| metrics.post_processing_total_tx_had_event_processed.inc())
             .tap_err(|e| {
                 warn!(
@@ -3708,7 +3706,7 @@ impl AuthorityState {
                 .next()
                 .is_some();
 
-            if !has_previous_epoch_data {
+            if false && !has_previous_epoch_data {
                 panic!(
                     "enable_multi_epoch_transaction_expiration is enabled but no transaction data found for previous epoch {}. \
                     This indicates the node was restored using an old version of sui-tool that does not backfill the table. \

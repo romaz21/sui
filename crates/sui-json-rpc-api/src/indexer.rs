@@ -66,7 +66,7 @@ pub trait IndexerApi {
     ) -> RpcResult<EventPage>;
 
     /// Subscribe to a stream of Sui event
-    #[subscription(name = "subscribeEvent", item = SuiEvent)]
+    #[subscription(name = "subscribeEvent", item = Vec<SuiEvent>)]
     fn subscribe_event(
         &self,
         /// The filter criteria of the event stream. See [Event filter](https://docs.sui.io/build/event_api#event-filters) documentation for examples.

@@ -287,6 +287,13 @@ fn try_into_byte(v: &Value) -> Option<u8> {
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub enum EventBandleFilter {
+    /// Return all events.
+    All([Box<EventFilter>; 0]),
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub enum EventFilter {
     /// Return all events.
     All([Box<EventFilter>; 0]),
@@ -374,6 +381,12 @@ impl Filter<SuiEvent> for EventFilter {
                 &item.type_.module == module && &ObjectID::from(item.type_.address) == package
             }
         }
+    }
+}
+
+impl Filter<Vec<SuiEvent>> for EventBandleFilter {
+    fn matches(&self, item: &Vec<SuiEvent>) -> bool {
+        true
     }
 }
 
