@@ -215,7 +215,6 @@ mod checked {
             transaction,
             transaction.is_gas_paid_from_address_balance(),
         )?;
-        check_objects(transaction, input_objects)?;
 
         Ok(gas_status)
     }
@@ -369,11 +368,6 @@ mod checked {
                     version: Some(obj_ref.1),
                 })?;
                 gas_objects.push(obj);
-            }
-            // Skip gas balance check for address balance payments
-            // We reserve gas budget in advance
-            if !gas_paid_from_address_balance {
-                gas_status.check_gas_balance(&gas_objects, gas_budget)?;
             }
             Ok(gas_status)
         }

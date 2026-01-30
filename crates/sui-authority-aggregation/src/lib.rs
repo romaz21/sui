@@ -89,8 +89,9 @@ where
             monitored_future!(async move { (name.clone(), execute(name, client).await,) })
         })
         .collect();
-    if let Some(prefetch_timeout) = prefetch_timeout {
-        let prefetch_sleep = tokio::time::sleep(prefetch_timeout);
+    if let Some(_) = prefetch_timeout {
+        let elapsed = Instant::now();
+        let prefetch_sleep = tokio::time::sleep(Duration::from_secs(0));
         let mut authority_to_result: BTreeMap<K, Result<V, E>> = BTreeMap::new();
         tokio::pin!(prefetch_sleep);
         // get all the sigs we can within prefetch_timeout
