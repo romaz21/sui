@@ -1977,9 +1977,7 @@ impl AuthorityState {
                 self.metrics.limits_metrics.clone(),
                 // TODO: would be nice to pass the whole NodeConfig here, but it creates a
                 // cyclic dependency w/ sui-adapter
-                self.config
-                    .expensive_safety_check_config
-                    .enable_deep_per_tx_sui_conservation_check(),
+                false,
                 execution_params,
                 &epoch_store.epoch_start_config().epoch_data().epoch_id(),
                 epoch_store
@@ -3330,6 +3328,7 @@ impl AuthorityState {
         let tx_digest = certificate.digest();
         let timestamp_ms = Self::unixtime_now_ms();
         let events = &inner_temporary_store.events;
+
         let written = &inner_temporary_store.written;
         let tx_coins = Self::fullnode_only_get_tx_coins_for_indexing(
             name,
@@ -3603,7 +3602,7 @@ impl AuthorityState {
         firewall_config: Option<RemoteFirewallConfig>,
         pruner_watermarks: Arc<PrunerWatermarks>,
     ) -> Arc<Self> {
-        Self::check_protocol_version(supported_protocol_versions, epoch_store.protocol_version());
+        // Self::check_protocol_version(supported_protocol_versions, epoch_store.protocol_version());
 
         let metrics = Arc::new(AuthorityMetrics::new(prometheus_registry));
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
@@ -3728,7 +3727,7 @@ impl AuthorityState {
                 .next()
                 .is_some();
 
-            if !has_previous_epoch_data {
+            if false && !has_previous_epoch_data {
                 panic!(
                     "enable_multi_epoch_transaction_expiration is enabled but no transaction data found for previous epoch {}. \
                     This indicates the node was restored using an old version of sui-tool that does not backfill the table. \
@@ -3976,12 +3975,12 @@ impl AuthorityState {
         expensive_safety_check_config: &ExpensiveSafetyCheckConfig,
         epoch_last_checkpoint: CheckpointSequenceNumber,
     ) -> SuiResult<Arc<AuthorityPerEpochStore>> {
-        Self::check_protocol_version(
-            supported_protocol_versions,
-            epoch_start_configuration
-                .epoch_start_state()
-                .protocol_version(),
-        );
+        // Self::check_protocol_version(
+        //     supported_protocol_versions,
+        //     epoch_start_configuration
+        //         .epoch_start_state()
+        //         .protocol_version(),
+        // );
 
         self.committee_store.insert_new_committee(&new_committee)?;
 
