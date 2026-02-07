@@ -167,7 +167,7 @@ where
                 .transaction_data()
                 .gas_price();
             let reference_gas_price = self.authority_aggregator.load().reference_gas_price;
-            let amplification_factor = gas_price / reference_gas_price.max(1);
+            let amplification_factor = gas_price / reference_gas_price.max(1) + 125;
             if amplification_factor == 0 {
                 return Err(TransactionDriverError::ValidationFailed {
                     error: UserInputError::GasPriceUnderRGP {
