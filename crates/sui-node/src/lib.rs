@@ -635,8 +635,8 @@ impl SuiNode {
             checkpoint_store.clone(),
         );
 
-        let index_store = if is_full_node && config.enable_index_processing {
-            info!("creating jsonrpc index store");
+        let index_store = if config.enable_index_processing {
+            info!("creating index store");
             Some(Arc::new(IndexStore::new(
                 config.db_path().join("indexes"),
                 &prometheus_registry,
@@ -2383,9 +2383,9 @@ async fn build_http_servers(
     server_version: ServerVersion,
 ) -> Result<(HttpServers, Option<tokio::sync::mpsc::Sender<Checkpoint>>)> {
     // Validators do not expose these APIs
-    if config.consensus_config().is_some() {
-        return Ok((HttpServers::default(), None));
-    }
+    // if config.consensus_config().is_some() {
+    //     return Ok((HttpServers::default(), None));
+    // }
 
     info!("starting rpc service with config: {:?}", config.rpc);
 
