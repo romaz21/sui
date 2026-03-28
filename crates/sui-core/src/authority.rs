@@ -48,6 +48,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use shared_object_version_manager::AssignedVersions;
 use shared_object_version_manager::Schedulable;
+use sui_types::full_checkpoint_content::ObjectSet;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -2267,19 +2268,20 @@ impl AuthorityState {
         Option<ObjectID>,
     )> {
         // Cheap validity checks for a transaction, including input size limits.
-        transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
+        info!("Performing dry execution for transaction {}", transaction_digest);
+        // transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
 
         let input_object_kinds = transaction.input_objects()?;
         let receiving_object_refs = transaction.receiving_objects();
 
-        sui_transaction_checks::deny::check_transaction_for_signing(
-            &transaction,
-            &[],
-            &input_object_kinds,
-            &receiving_object_refs,
-            &self.config.transaction_deny_config,
-            self.get_backing_package_store().as_ref(),
-        )?;
+        // sui_transaction_checks::deny::check_transaction_for_signing(
+        //     &transaction,
+        //     &[],
+        //     &input_object_kinds,
+        //     &receiving_object_refs,
+        //     &self.config.transaction_deny_config,
+        //     self.get_backing_package_store().as_ref(),
+        // )?;
 
         let (input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
             // We don't want to cache this transaction since it's a dry run.
@@ -2353,25 +2355,12 @@ impl AuthorityState {
         let (mut kind, signer, _) = transaction.execution_parts();
 
         let silent = true;
-        let executor = sui_execution::executor(protocol_config, silent)
-            .expect("Creating an executor should not fail here");
+        // let executor = sui_execution::executor(protocol_config, silent)
+        //     .expect("Creating an executor should not fail here");
 
-        let expensive_checks = false;
-        let early_execution_error = get_early_execution_error(
-            &transaction_digest,
-            &checked_input_objects,
-            self.config.certificate_deny_config.certificate_deny_set(),
-            // TODO(address-balances): This does not currently support balance withdraws properly.
-            // For address balance withdraws, this cannot detect insufficient balance. We need to
-            // first check if the balance is sufficient, similar to how we schedule withdraws.
-            // For object balance withdraws, we need to handle the case where object balance is
-            // insufficient in the post-execution.
-            &FundsWithdrawStatus::MaybeSufficient,
-        );
-        let execution_params = match early_execution_error {
-            Some(error) => ExecutionOrEarlyError::Err(error),
-            None => ExecutionOrEarlyError::Ok(()),
-        };
+        let start = std::time::Instant::now();
+        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
+        let execution_params = ExecutionOrEarlyError::Ok(());
 
         // Skip on early error: the tx will fail anyway.
         let rewritten_inputs = if execution_params.is_ok() {
@@ -2387,12 +2376,15 @@ impl AuthorityState {
             None
         };
 
+        info!("Starting execution for dry run of transaction {}", transaction_digest);
         let (inner_temp_store, _, effects, _timings, execution_error) = self
             .execute_transaction_to_effects(
-                executor.as_ref(),
-                self.get_backing_store().as_ref(),
+                // executor.as_ref(),
+                &**epoch_store.executor(),
+                // self.get_backing_store().as_ref(),
+                &tracking_store,
                 protocol_config,
-                expensive_checks,
+                false,
                 execution_params,
                 &epoch_store.epoch_start_config().epoch_data().epoch_id(),
                 epoch_store
@@ -2407,6 +2399,7 @@ impl AuthorityState {
                 signer,
                 transaction_digest,
             );
+        info!("Finished execution for dry run of transaction {} elapsed {}", transaction_digest, start.elapsed().as_millis());
 
         let tx_digest = *effects.transaction_digest();
 
@@ -2426,28 +2419,28 @@ impl AuthorityState {
         // Returning empty vector here because we recalculate changes in the rpc layer.
         let balance_changes = Vec::new();
 
-        let written_with_kind = effects
-            .created()
-            .into_iter()
-            .map(|(oref, _)| (oref, WriteKind::Create))
-            .chain(
-                effects
-                    .unwrapped()
-                    .into_iter()
-                    .map(|(oref, _)| (oref, WriteKind::Unwrap)),
-            )
-            .chain(
-                effects
-                    .mutated()
-                    .into_iter()
-                    .map(|(oref, _)| (oref, WriteKind::Mutate)),
-            )
-            .map(|(oref, kind)| {
-                let obj = inner_temp_store.written.get(&oref.0).unwrap();
-                // TODO: Avoid clones.
-                (oref.0, (oref, obj.clone(), kind))
-            })
-            .collect();
+        // let written_with_kind = effects
+        //     .created()
+        //     .into_iter()
+        //     .map(|(oref, _)| (oref, WriteKind::Create))
+        //     .chain(
+        //         effects
+        //             .unwrapped()
+        //             .into_iter()
+        //             .map(|(oref, _)| (oref, WriteKind::Unwrap)),
+        //     )
+        //     .chain(
+        //         effects
+        //             .mutated()
+        //             .into_iter()
+        //             .map(|(oref, _)| (oref, WriteKind::Mutate)),
+        //     )
+        //     .map(|(oref, kind)| {
+        //         let obj = inner_temp_store.written.get(&oref.0).unwrap();
+        //         // TODO: Avoid clones.
+        //         (oref.0, (oref, obj.clone(), kind))
+        //     })
+        //     .collect();
 
         let execution_error_source = execution_error
             .as_ref()
@@ -2456,9 +2449,7 @@ impl AuthorityState {
 
         Ok((
             DryRunTransactionBlockResponse {
-                suggested_gas_price: self
-                    .congestion_tracker
-                    .get_suggested_gas_prices(&transaction),
+                suggested_gas_price: None,
                 input: SuiTransactionBlockData::try_from_with_module_cache(
                     transaction,
                     &module_cache,
@@ -2480,7 +2471,7 @@ impl AuthorityState {
                 balance_changes,
                 execution_error_source,
             },
-            written_with_kind,
+            BTreeMap::new(),
             effects,
             mock_gas,
         ))
@@ -2492,6 +2483,9 @@ impl AuthorityState {
         checks: TransactionChecks,
         allow_mock_gas_coin: bool,
     ) -> SuiResult<SimulateTransactionResult> {
+        let tx_digest = transaction.digest();
+        info!("Starting simulate for tx {}", tx_digest);
+        
         if transaction.kind().is_system_tx() {
             return Err(SuiErrorKind::UnsupportedFeatureError {
                 error: "simulate does not support system transactions".to_string(),
@@ -2532,7 +2526,7 @@ impl AuthorityState {
         }
 
         // Cheap validity checks for a transaction, including input size limits.
-        transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
+        // transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
 
         let input_object_kinds = transaction.input_objects()?;
         let receiving_object_refs = transaction.receiving_objects();
@@ -2559,14 +2553,13 @@ impl AuthorityState {
             None
         };
 
-        let declared_withdrawals = self.pre_object_load_checks(
-            &transaction,
-            &[],
-            &input_object_kinds,
-            &receiving_object_refs,
-            epoch_store.protocol_config(),
-        )?;
-        let address_funds: BTreeSet<_> = declared_withdrawals.keys().cloned().collect();
+        // let declared_withdrawals = self.pre_object_load_checks(
+        //     &transaction,
+        //     &[],
+        //     &input_object_kinds,
+        //     &receiving_object_refs,
+        // )?;
+        // let address_funds: BTreeSet<_> = declared_withdrawals.keys().cloned().collect();
 
         let (mut input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
             // We don't want to cache this transaction since it's a simulation.
@@ -2583,7 +2576,17 @@ impl AuthorityState {
             id
         });
 
-        let protocol_config = epoch_store.protocol_config();
+        let protocol_config_owned;
+        let protocol_config: &ProtocolConfig = if epoch_store.protocol_config().new_vm_enabled() {
+            epoch_store.protocol_config()
+        } else {
+            protocol_config_owned = {
+                let mut cfg = epoch_store.protocol_config().clone();
+                cfg.set_execution_version_for_testing(4);
+                cfg
+            };
+            &protocol_config_owned
+        };
 
         let (gas_status, checked_input_objects) = if dev_inspect {
             sui_transaction_checks::check_dev_inspect_input(
@@ -2595,7 +2598,7 @@ impl AuthorityState {
             )?
         } else {
             sui_transaction_checks::check_transaction_input(
-                epoch_store.protocol_config(),
+                protocol_config,
                 epoch_store.reference_gas_price(),
                 &transaction,
                 input_objects,
@@ -2604,47 +2607,43 @@ impl AuthorityState {
                 &self.config.verifier_signing_config,
             )?
         };
+        // let executor = sui_execution::executor(
+        //     protocol_config,
+        //     true, // silent
+        // )
+        // .expect("Creating an executor should not fail here");
 
-        // TODO see if we can spin up a VM once and reuse it
-        let executor = sui_execution::executor(
-            protocol_config,
-            true, // silent
-        )
-        .expect("Creating an executor should not fail here");
+        let executor = &**epoch_store.executor();
 
-        let (mut kind, signer, gas_data) = transaction.execution_parts();
-        let rewritten_inputs = rewrite_transaction_for_coin_reservations(
-            self.chain_identifier,
-            &*self.coin_reservation_resolver,
-            signer,
-            &mut kind,
-            None,
-        )?;
-        let early_execution_error = get_early_execution_error(
-            &transaction.digest(),
-            &checked_input_objects,
-            self.config.certificate_deny_config.certificate_deny_set(),
-            &FundsWithdrawStatus::MaybeSufficient,
-        );
-        let execution_params = match early_execution_error {
-            Some(error) => ExecutionOrEarlyError::Err(error),
-            None => ExecutionOrEarlyError::Ok(()),
-        };
+        let (kind, signer, gas_data) = transaction.execution_parts();
+        // let early_execution_error = get_early_execution_error(
+        //     &transaction.digest(),
+        //     &checked_input_objects,
+        //     self.config.certificate_deny_config.certificate_deny_set(),
+        //     &FundsWithdrawStatus::MaybeSufficient,
+        // );
+        // let execution_params = match early_execution_error {
+        //     Some(error) => ExecutionOrEarlyError::Err(error),
+        //     None => ExecutionOrEarlyError::Ok(()),
+        // };
 
-        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
+        let execution_params = ExecutionOrEarlyError::Ok(());
 
         // Clone inputs for potential retry if object funds check fails post-execution.
-        let cloned_input_objects = checked_input_objects.clone();
-        let cloned_gas = gas_data.clone();
-        let cloned_kind = kind.clone();
-        let tx_digest = transaction.digest();
+        // let cloned_input_objects = checked_input_objects.clone();
+        // let cloned_gas = gas_data.clone();
+        // let cloned_kind = kind.clone();
         let epoch_id = epoch_store.epoch_start_config().epoch_data().epoch_id();
         let epoch_timestamp_ms = epoch_store
             .epoch_start_config()
             .epoch_data()
             .epoch_start_timestamp();
+
+        let start = std::time::Instant::now();
+        info!("Starting dev inspect for tx {}", tx_digest);
+        let backing_store = self.get_backing_store();
         let (inner_temp_store, _, effects, execution_result) = executor.dev_inspect_transaction(
-            &tracking_store,
+            backing_store.as_ref(),
             protocol_config,
             self.metrics.execution_metrics.clone(),
             false, // expensive_checks
@@ -2655,93 +2654,65 @@ impl AuthorityState {
             gas_data,
             gas_status,
             kind,
-            rewritten_inputs.clone(),
+            None,
             signer,
             tx_digest,
             dev_inspect,
+            false,
         );
+        info!("Finished execution for simulate of tx {} elapsed {} dev_inspect: {dev_inspect}", tx_digest, start.elapsed().as_millis());
 
-        // Post-execution: check object funds (non-address withdrawals discovered during execution).
-        let (inner_temp_store, effects, execution_result) = if execution_result.is_ok() {
-            let has_insufficient_object_funds = inner_temp_store
-                .accumulator_running_max_withdraws
-                .iter()
-                .filter(|(id, _)| !address_funds.contains(id))
-                .any(|(id, max_withdraw)| {
-                    let (balance, _) = self.get_account_funds_read().get_latest_account_amount(id);
-                    balance < *max_withdraw
-                });
+        // // Post-execution: check object funds (non-address withdrawals discovered during execution).
+        // let (inner_temp_store, effects, execution_result) = if execution_result.is_ok() {
+        //     let has_insufficient_object_funds = inner_temp_store
+        //         .accumulator_running_max_withdraws
+        //         .iter()
+        //         .filter(|(id, _)| !address_funds.contains(id))
+        //         .any(|(id, max_withdraw)| {
+        //             let (balance, _) = self.get_account_funds_read().get_latest_account_amount(id);
+        //             balance < *max_withdraw
+        //         });
 
-            if has_insufficient_object_funds {
-                let retry_gas_status = SuiGasStatus::new(
-                    cloned_gas.budget,
-                    cloned_gas.price,
-                    epoch_store.reference_gas_price(),
-                    protocol_config,
-                )?;
-                let (store, _, effects, result) = executor.dev_inspect_transaction(
-                    &tracking_store,
-                    protocol_config,
-                    self.metrics.execution_metrics.clone(),
-                    false,
-                    ExecutionOrEarlyError::Err(ExecutionErrorKind::InsufficientFundsForWithdraw),
-                    &epoch_id,
-                    epoch_timestamp_ms,
-                    cloned_input_objects,
-                    cloned_gas,
-                    retry_gas_status,
-                    cloned_kind,
-                    rewritten_inputs,
-                    signer,
-                    tx_digest,
-                    dev_inspect,
-                );
-                (store, effects, result)
-            } else {
-                (inner_temp_store, effects, execution_result)
-            }
-        } else {
-            (inner_temp_store, effects, execution_result)
-        };
+        // let loaded_runtime_objects = tracking_store.into_read_objects();
+        // let unchanged_loaded_runtime_objects =
+        //     crate::transaction_outputs::unchanged_loaded_runtime_objects(
+        //         &transaction,
+        //         &effects,
+        //         &loaded_runtime_objects,
+        //     );
 
-        let loaded_runtime_objects = tracking_store.into_read_objects();
-        let unchanged_loaded_runtime_objects =
-            crate::transaction_outputs::unchanged_loaded_runtime_objects(
-                &transaction,
-                &effects,
-                &loaded_runtime_objects,
-            );
+        // let object_set = {
+        //     let objects = {
+        //         let mut objects = loaded_runtime_objects;
 
-        let object_set = {
-            let objects = {
-                let mut objects = loaded_runtime_objects;
+        //         for o in inner_temp_store
+        //             .input_objects
+        //             .into_values()
+        //             .chain(inner_temp_store.written.into_values())
+        //         {
+        //             objects.insert(o);
+        //         }
 
-                for o in inner_temp_store
-                    .input_objects
-                    .into_values()
-                    .chain(inner_temp_store.written.into_values())
-                {
-                    objects.insert(o);
-                }
+        //         objects
+        //     };
 
-                objects
-            };
+        //     let object_keys = sui_types::storage::get_transaction_object_set(
+        //         &transaction,
+        //         &effects,
+        //         &unchanged_loaded_runtime_objects,
+        //     );
 
-            let object_keys = sui_types::storage::get_transaction_object_set(
-                &transaction,
-                &effects,
-                &unchanged_loaded_runtime_objects,
-            );
+        //     let mut set = sui_types::full_checkpoint_content::ObjectSet::default();
+        //     for k in object_keys {
+        //         if let Some(o) = objects.get(&k) {
+        //             set.insert(o.clone());
+        //         }
+        //     }
 
-            let mut set = sui_types::full_checkpoint_content::ObjectSet::default();
-            for k in object_keys {
-                if let Some(o) = objects.get(&k) {
-                    set.insert(o.clone());
-                }
-            }
+        //     set
+        // };
 
-            set
-        };
+        let object_set = ObjectSet::default();
 
         Ok(SimulateTransactionResult {
             objects: object_set,
@@ -2749,10 +2720,8 @@ impl AuthorityState {
             effects,
             execution_result,
             mock_gas_id,
-            unchanged_loaded_runtime_objects,
-            suggested_gas_price: self
-                .congestion_tracker
-                .get_suggested_gas_prices(&transaction),
+            unchanged_loaded_runtime_objects: vec![],
+            suggested_gas_price: None,
         })
     }
 
@@ -2796,7 +2765,9 @@ impl AuthorityState {
 
         let show_raw_txn_data_and_effects = show_raw_txn_data_and_effects.unwrap_or(false);
         let reference_gas_price = epoch_store.reference_gas_price();
-        let protocol_config = epoch_store.protocol_config();
+        let mut protocol_config = epoch_store.protocol_config().clone();
+        protocol_config.set_execution_version_for_testing(4);
+        let protocol_config = &protocol_config;
         let max_tx_gas = protocol_config.max_tx_gas();
 
         let price = gas_price.unwrap_or(reference_gas_price);
@@ -2826,19 +2797,19 @@ impl AuthorityState {
             vec![]
         };
 
-        transaction.validity_check_no_gas_check(protocol_config)?;
+        // transaction.validity_check_no_gas_check(protocol_config)?;
 
         let input_object_kinds = transaction.input_objects()?;
         let receiving_object_refs = transaction.receiving_objects();
 
-        sui_transaction_checks::deny::check_transaction_for_signing(
-            &transaction,
-            &[],
-            &input_object_kinds,
-            &receiving_object_refs,
-            &self.config.transaction_deny_config,
-            self.get_backing_package_store().as_ref(),
-        )?;
+        // sui_transaction_checks::deny::check_transaction_for_signing(
+        //     &transaction,
+        //     &[],
+        //     &input_object_kinds,
+        //     &receiving_object_refs,
+        //     &self.config.transaction_deny_config,
+        //     self.get_backing_package_store().as_ref(),
+        // )?;
 
         let (mut input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
             // We don't want to cache this transaction since it's a dev inspect.
@@ -2906,8 +2877,9 @@ impl AuthorityState {
             }
         };
 
-        let executor = sui_execution::executor(protocol_config, /* silent */ true)
-            .expect("Creating an executor should not fail here");
+        // let executor = sui_execution::executor(protocol_config, /* silent */ true)
+        //     .expect("Creating an executor should not fail here");
+        let executor = &**epoch_store.executor();
         let gas_data = transaction.gas_data().clone();
         let intent_msg = IntentMessage::new(
             Intent {
@@ -2918,28 +2890,26 @@ impl AuthorityState {
             transaction,
         );
         let transaction_digest = TransactionDigest::new(default_hash(&intent_msg.value));
-        let early_execution_error = get_early_execution_error(
-            &transaction_digest,
-            &checked_input_objects,
-            self.config.certificate_deny_config.certificate_deny_set(),
-            // TODO(address-balances): Mimic withdraw scheduling and pass the result.
-            &FundsWithdrawStatus::MaybeSufficient,
-        );
-        let execution_params = match early_execution_error {
-            Some(error) => ExecutionOrEarlyError::Err(error),
-            None => ExecutionOrEarlyError::Ok(()),
-        };
+        let start = std::time::Instant::now();
+        info!("Starting dev inspect for transaction {}", transaction_digest);
+        // let early_execution_error = get_early_execution_error(
+        //     &transaction_digest,
+        //     &checked_input_objects,
+        //     self.config.certificate_deny_config.certificate_deny_set(),
+        //     // TODO(address-balances): Mimic withdraw scheduling and pass the result.
+        //     &FundsWithdrawStatus::MaybeSufficient,
+        // );
+        // let execution_params = match early_execution_error {
+        //     Some(error) => ExecutionOrEarlyError::Err(error),
+        //     None => ExecutionOrEarlyError::Ok(()),
+        // };
 
-        let mut transaction_kind = transaction_kind;
-        let rewritten_inputs = rewrite_transaction_for_coin_reservations(
-            self.chain_identifier,
-            &*self.coin_reservation_resolver,
-            sender,
-            &mut transaction_kind,
-            None,
-        )?;
+        let execution_params = ExecutionOrEarlyError::Ok(());
+
+        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
+
         let (inner_temp_store, _, effects, execution_result) = executor.dev_inspect_transaction(
-            self.get_backing_store().as_ref(),
+            &tracking_store,
             protocol_config,
             self.metrics.execution_metrics.clone(),
             /* expensive checks */ false,
@@ -2953,11 +2923,13 @@ impl AuthorityState {
             gas_data,
             gas_status,
             transaction_kind,
-            rewritten_inputs,
+            None,
             sender,
             transaction_digest,
             skip_checks,
+            false,
         );
+        info!("Finished dev inspect for transaction {} elapsed {} {skip_checks}", transaction_digest, start.elapsed().as_millis());
 
         let raw_effects = if show_raw_txn_data_and_effects {
             bcs::to_bytes(&effects).map_err(|_| SuiErrorKind::TransactionSerializationError {
@@ -3524,6 +3496,27 @@ impl AuthorityState {
         let timestamp_ms = Self::unixtime_now_ms();
         let events = &inner_temporary_store.events;
         let written = &inner_temporary_store.written;
+
+        let effects_: SuiTransactionBlockEffects = effects.clone().try_into()?;
+        let events_ = Self::make_transaction_block_events(
+            backing_package_store,
+            events.clone(),
+            *tx_digest,
+            timestamp_ms,
+            epoch_store,
+            inner_temporary_store,
+        )?;
+        // Emit events
+        subscription_handler
+            .process_tx(certificate.data().transaction_data(), &effects_, &events_)
+            .tap_ok(|_| metrics.post_processing_total_tx_had_event_processed.inc())
+            .tap_err(|e| {
+                warn!(
+                    ?tx_digest,
+                    "Post processing - Couldn't process events for tx: {}", e
+                )
+            })?;
+
         let tx_coins = Self::fullnode_only_get_tx_coins_for_indexing(
             name,
             object_store,
@@ -3551,26 +3544,6 @@ impl AuthorityState {
         .tap_ok(|_| metrics.post_processing_total_tx_indexed.inc())
         .tap_err(|e| error!(?tx_digest, "Post processing - Couldn't index tx: {e}"))
         .expect("Indexing tx should not fail");
-
-        let effects: SuiTransactionBlockEffects = effects.clone().try_into()?;
-        let events = Self::make_transaction_block_events(
-            backing_package_store,
-            events.clone(),
-            *tx_digest,
-            timestamp_ms,
-            epoch_store,
-            inner_temporary_store,
-        )?;
-        // Emit events
-        subscription_handler
-            .process_tx(certificate.data().transaction_data(), &effects, &events)
-            .tap_ok(|_| metrics.post_processing_total_tx_had_event_processed.inc())
-            .tap_err(|e| {
-                warn!(
-                    ?tx_digest,
-                    "Post processing - Couldn't process events for tx: {}", e
-                )
-            })?;
 
         metrics
             .post_processing_total_events_emitted

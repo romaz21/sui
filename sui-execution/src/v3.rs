@@ -173,50 +173,92 @@ impl executor::Executor for Executor {
         transaction_signer: SuiAddress,
         transaction_digest: TransactionDigest,
         skip_all_checks: bool,
+        track_results: bool,
     ) -> (
         InnerTemporaryStore,
         SuiGasStatus,
         TransactionEffects,
         Result<Vec<ExecutionResult>, ExecutionError>,
     ) {
-        let (inner_temp_store, gas_status, effects, _timings, result) = if skip_all_checks {
-            execute_transaction_to_effects::<execution_mode::DevInspect<true>>(
-                store,
-                input_objects,
-                gas,
-                gas_status,
-                transaction_kind,
-                transaction_signer,
-                transaction_digest,
-                &self.0,
-                epoch_id,
-                epoch_timestamp_ms,
-                protocol_config,
-                metrics,
-                enable_expensive_checks,
-                execution_params,
-                &mut None,
-            )
+        if track_results {
+            let (inner_temp_store, gas_status, effects, _timings, result) = if skip_all_checks {
+                execute_transaction_to_effects::<execution_mode::DevInspect<true>>(
+                    store,
+                    input_objects,
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            } else {
+                execute_transaction_to_effects::<execution_mode::DevInspect<false>>(
+                    store,
+                    input_objects,
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            };
+            (inner_temp_store, gas_status, effects, result)
         } else {
-            execute_transaction_to_effects::<execution_mode::DevInspect<false>>(
-                store,
-                input_objects,
-                gas,
-                gas_status,
-                transaction_kind,
-                transaction_signer,
-                transaction_digest,
-                &self.0,
-                epoch_id,
-                epoch_timestamp_ms,
-                protocol_config,
-                metrics,
-                enable_expensive_checks,
-                execution_params,
-                &mut None,
-            )
-        };
-        (inner_temp_store, gas_status, effects, result)
+            let (inner_temp_store, gas_status, effects, _timings, result) = if skip_all_checks {
+                execute_transaction_to_effects::<execution_mode::FastDevInspect<true>>(
+                    store,
+                    input_objects,
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            } else {
+                execute_transaction_to_effects::<execution_mode::FastDevInspect<false>>(
+                    store,
+                    input_objects,
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            };
+            (inner_temp_store, gas_status, effects, result.map(|_| vec![]))
+        }
     }
 
     fn update_genesis_state(
