@@ -149,7 +149,6 @@ mod checked {
         Vec<ExecutionTiming>,
         Result<Mode::ExecutionResults, Mode::Error>,
     ) {
-        info!("Executing transaction {}", transaction_digest);
         let input_objects = input_objects.into_inner();
         let mutable_inputs = if enable_expensive_checks {
             input_objects.all_mutable_inputs().keys().copied().collect()
@@ -204,8 +203,6 @@ mod checked {
         let is_gasless = protocol_config.enable_gasless()
             && is_gasless_transaction(&gas_data, &transaction_kind);
         let is_epoch_change = transaction_kind.is_end_of_epoch_tx();
-
-        info!("Starting execution of transaction with digest {}", transaction_digest);
 
         let (gas_cost_summary, execution_result, timings) = execute_transaction::<Mode>(
             store,
@@ -367,24 +364,23 @@ mod checked {
         Vec<ExecutionTiming>,
     ) {
         // At this point no charges have been applied yet
-        // debug_assert!(
-        //     gas_charger.no_charges(),
-        //     "No gas charges must be applied yet"
-        // );
+        debug_assert!(
+            gas_charger.no_charges(),
+            "No gas charges must be applied yet"
+        );
 
-        // let is_genesis_tx = matches!(transaction_kind, TransactionKind::Genesis(_));
-        // let advance_epoch_gas_summary = transaction_kind.get_advance_epoch_tx_gas_summary();
-        // let digest = tx_ctx.borrow().digest();
+        let is_genesis_tx = matches!(transaction_kind, TransactionKind::Genesis(_));
+        let advance_epoch_gas_summary = transaction_kind.get_advance_epoch_tx_gas_summary();
+        let digest = tx_ctx.borrow().digest();
 
         // We must charge object read here during transaction execution, because if this fails
         // we must still ensure an effect is committed and all objects versions incremented
-        // let result: Result<(), ExecutionError> = gas_charger.charge_input_objects(temporary_store);
-        let result: Result<(), ExecutionError> = Ok(());
+        let result = gas_charger.charge_input_objects(temporary_store);
 
         let result: ResultWithTimings<Mode::ExecutionResults, Mode::Error> =
             result.map_err(|e| (e.into(), vec![])).and_then(
                 |()| -> ResultWithTimings<Mode::ExecutionResults, Mode::Error> {
-                    let execution_result: ResultWithTimings<
+                    let mut execution_result: ResultWithTimings<
                         Mode::ExecutionResults,
                         Mode::Error,
                     > = match execution_params {
@@ -406,27 +402,27 @@ mod checked {
                         ),
                     };
 
-                    // let meter_check = check_meter_limit::<Mode>(
-                    //     temporary_store,
-                    //     gas_charger,
-                    //     protocol_config,
-                    //     metrics.clone(),
-                    // );
-                    // if let Err(e) = meter_check {
-                    //     execution_result = Err((e, vec![]));
-                    // }
+                    let meter_check = check_meter_limit::<Mode>(
+                        temporary_store,
+                        gas_charger,
+                        protocol_config,
+                        metrics.clone(),
+                    );
+                    if let Err(e) = meter_check {
+                        execution_result = Err((e, vec![]));
+                    }
 
-                    // if execution_result.is_ok() {
-                    //     let gas_check = check_written_objects_limit::<Mode>(
-                    //         temporary_store,
-                    //         gas_charger,
-                    //         protocol_config,
-                    //         metrics,
-                    //     );
-                    //     if let Err(e) = gas_check {
-                    //         execution_result = Err((e, vec![]));
-                    //     }
-                    // }
+                    if execution_result.is_ok() {
+                        let gas_check = check_written_objects_limit::<Mode>(
+                            temporary_store,
+                            gas_charger,
+                            protocol_config,
+                            metrics,
+                        );
+                        if let Err(e) = gas_check {
+                            execution_result = Err((e, vec![]));
+                        }
+                    }
 
                     execution_result
                 },
@@ -445,8 +441,7 @@ mod checked {
             );
         }
 
-        // let cost_summary = gas_charger.charge_gas(temporary_store, &mut result);
-        let cost_summary = GasCostSummary::default();
+        let cost_summary = gas_charger.charge_gas(temporary_store, &mut result);
         // For advance epoch transaction, we need to provide epoch rewards and rebates as extra
         // information provided to check_sui_conserved, because we mint rewards, and burn
         // the rebates. We also need to pass in the unmetered_storage_rebate because storage
@@ -454,22 +449,22 @@ mod checked {
         // We could probably clean up the code a bit.
         // Put all the storage rebate accumulated in the system transaction
         // to the 0x5 object so that it's not lost.
-        // temporary_store.conserve_unmetered_storage_rebate(gas_charger.unmetered_storage_rebate());
+        temporary_store.conserve_unmetered_storage_rebate(gas_charger.unmetered_storage_rebate());
 
-        // if let Err(e) = run_conservation_checks::<Mode>(
-        //     temporary_store,
-        //     gas_charger,
-        //     digest,
-        //     move_vm,
-        //     protocol_config.simple_conservation_checks(),
-        //     enable_expensive_checks,
-        //     &cost_summary,
-        //     is_genesis_tx,
-        //     advance_epoch_gas_summary,
-        // ) {
-        //     // FIXME: we cannot fail the transaction if this is an epoch change transaction.
-        //     result = Err(e);
-        // }
+        if let Err(e) = run_conservation_checks::<Mode>(
+            temporary_store,
+            gas_charger,
+            digest,
+            move_vm,
+            protocol_config.simple_conservation_checks(),
+            enable_expensive_checks,
+            &cost_summary,
+            is_genesis_tx,
+            advance_epoch_gas_summary,
+        ) {
+            // FIXME: we cannot fail the transaction if this is an epoch change transaction.
+            result = Err(e);
+        }
 
         (cost_summary, result, timings)
     }
