@@ -3537,6 +3537,27 @@ impl AuthorityState {
         let timestamp_ms = Self::unixtime_now_ms();
         let events = &inner_temporary_store.events;
         let written = &inner_temporary_store.written;
+
+        let effects_: SuiTransactionBlockEffects = effects.clone().try_into()?;
+        let events_ = Self::make_transaction_block_events(
+            backing_package_store,
+            events.clone(),
+            *tx_digest,
+            timestamp_ms,
+            epoch_store,
+            inner_temporary_store,
+        )?;
+        // Emit events
+        subscription_handler
+            .process_tx(certificate.data().transaction_data(), &effects_, &events_)
+            .tap_ok(|_| metrics.post_processing_total_tx_had_event_processed.inc())
+            .tap_err(|e| {
+                warn!(
+                    ?tx_digest,
+                    "Post processing - Couldn't process events for tx: {}", e
+                )
+            })?;
+
         let tx_coins = Self::fullnode_only_get_tx_coins_for_indexing(
             name,
             object_store,
@@ -3564,26 +3585,6 @@ impl AuthorityState {
         .tap_ok(|_| metrics.post_processing_total_tx_indexed.inc())
         .tap_err(|e| error!(?tx_digest, "Post processing - Couldn't index tx: {e}"))
         .expect("Indexing tx should not fail");
-
-        let effects: SuiTransactionBlockEffects = effects.clone().try_into()?;
-        let events = Self::make_transaction_block_events(
-            backing_package_store,
-            events.clone(),
-            *tx_digest,
-            timestamp_ms,
-            epoch_store,
-            inner_temporary_store,
-        )?;
-        // Emit events
-        subscription_handler
-            .process_tx(certificate.data().transaction_data(), &effects, &events)
-            .tap_ok(|_| metrics.post_processing_total_tx_had_event_processed.inc())
-            .tap_err(|e| {
-                warn!(
-                    ?tx_digest,
-                    "Post processing - Couldn't process events for tx: {}", e
-                )
-            })?;
 
         metrics
             .post_processing_total_events_emitted
