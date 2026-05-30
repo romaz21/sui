@@ -349,6 +349,71 @@ impl<const SKIP_ALL_CHECKS: bool> ExecutionMode for DevInspect<SKIP_ALL_CHECKS> 
     }
 }
 
+/// Like `DevInspect` but with `TRACK_EXECUTION = false`. Used for fast simulation
+/// where per-command return values are not needed by the caller.
+pub struct FastDevInspect<const SKIP_ALL_CHECKS: bool>;
+
+impl<const SKIP_ALL_CHECKS: bool> ExecutionMode for FastDevInspect<SKIP_ALL_CHECKS> {
+    type ArgumentUpdates = ();
+    type ExecutionResults = ();
+    type Error = ExecutionError;
+
+    fn allow_arbitrary_function_calls() -> bool {
+        SKIP_ALL_CHECKS
+    }
+
+    fn allow_arbitrary_values() -> bool {
+        SKIP_ALL_CHECKS
+    }
+
+    fn skip_conservation_checks() -> bool {
+        SKIP_ALL_CHECKS
+    }
+
+    fn packages_are_predefined() -> bool {
+        false
+    }
+
+    fn empty_arguments() -> Self::ArgumentUpdates {}
+
+    fn empty_results() -> Self::ExecutionResults {}
+
+    fn add_argument_update(
+        _acc: &mut Self::ArgumentUpdates,
+        _arg: Argument,
+        _new_value: &Value,
+    ) -> Result<(), ExecutionError> {
+        invariant_violation!("should not be called")
+    }
+
+    fn finish_command(
+        _acc: &mut Self::ExecutionResults,
+        _argument_updates: Self::ArgumentUpdates,
+        _command_result: &[Value],
+    ) -> Result<(), ExecutionError> {
+        invariant_violation!("should not be called")
+    }
+
+    const TRACK_EXECUTION: bool = false;
+
+    fn add_argument_update_v2(
+        _acc: &mut Self::ArgumentUpdates,
+        _arg: Argument,
+        _bytes: Vec<u8>,
+        _type_: TypeTag,
+    ) -> Result<(), ExecutionError> {
+        invariant_violation!("should not be called")
+    }
+
+    fn finish_command_v2(
+        _acc: &mut Self::ExecutionResults,
+        _argument_updates: Vec<(Argument, Vec<u8>, TypeTag)>,
+        _command_result: Vec<(Vec<u8>, TypeTag)>,
+    ) -> Result<(), ExecutionError> {
+        invariant_violation!("should not be called")
+    }
+}
+
 fn value_to_bytes_and_tag(value: &Value) -> Result<(Vec<u8>, TypeTag), ExecutionError> {
     let (type_tag, bytes) = match value {
         Value::Object(obj) => {

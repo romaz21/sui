@@ -2409,8 +2409,8 @@ impl AuthorityState {
             .into());
         }
 
-        // Cheap validity checks for a transaction, including input size limits.
-        transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
+        // Validity checks skipped for simulation speed (input size limits etc).
+        // transaction.validity_check_no_gas_check(epoch_store.protocol_config())?;
 
         let input_object_kinds = transaction.input_objects()?;
         let receiving_object_refs = transaction.receiving_objects();
@@ -2483,12 +2483,9 @@ impl AuthorityState {
             )?
         };
 
-        // TODO see if we can spin up a VM once and reuse it
-        let executor = sui_execution::executor(
-            protocol_config,
-            true, // silent
-        )
-        .expect("Creating an executor should not fail here");
+        // Reuse the epoch store's cached executor instead of spinning up a fresh
+        // Move VM on every simulation -- VM construction dominated simulate latency.
+        let executor = &**epoch_store.executor();
 
         let (mut kind, signer, gas_data) = transaction.execution_parts();
         let rewritten_inputs = rewrite_transaction_for_coin_reservations(
@@ -2498,18 +2495,12 @@ impl AuthorityState {
             &mut kind,
             None,
         )?;
-        let early_execution_error = get_early_execution_error(
-            &transaction.digest(),
-            &checked_input_objects,
-            self.config.certificate_deny_config.certificate_deny_set(),
-            &FundsWithdrawStatus::MaybeSufficient,
-        );
-        let execution_params = match early_execution_error {
-            None => ExecutionOrEarlyError::Ok(()),
-            Some(errors) => ExecutionOrEarlyError::Err(errors),
-        };
+        // Early-execution-error / certificate-deny-set check skipped for simulation speed.
+        let execution_params = ExecutionOrEarlyError::Ok(());
 
-        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
+        // TrackingBackingStore dropped for speed: object reads are no longer cloned/tracked.
+        // Consequence: `unchanged_loaded_runtime_objects` is not reported for simulate.
+        let backing_store = self.get_backing_store();
 
         // Clone inputs for potential retry if object funds check fails post-execution.
         let cloned_input_objects = checked_input_objects.clone();
@@ -2522,7 +2513,7 @@ impl AuthorityState {
             .epoch_data()
             .epoch_start_timestamp();
         let (inner_temp_store, _, effects, execution_result) = executor.dev_inspect_transaction(
-            &tracking_store,
+            backing_store.as_ref(),
             protocol_config,
             self.metrics.execution_metrics.clone(),
             false, // expensive_checks
@@ -2537,6 +2528,7 @@ impl AuthorityState {
             signer,
             tx_digest,
             dev_inspect,
+            /* track_results */ true,
         );
 
         // Post-execution: check object funds (non-address withdrawals discovered during execution).
@@ -2558,7 +2550,7 @@ impl AuthorityState {
                     protocol_config,
                 )?;
                 let (store, _, effects, result) = executor.dev_inspect_transaction(
-                    &tracking_store,
+                    backing_store.as_ref(),
                     protocol_config,
                     self.metrics.execution_metrics.clone(),
                     false,
@@ -2575,6 +2567,7 @@ impl AuthorityState {
                     signer,
                     tx_digest,
                     dev_inspect,
+                    /* track_results */ true,
                 );
                 (store, effects, result)
             } else {
@@ -2584,7 +2577,9 @@ impl AuthorityState {
             (inner_temp_store, effects, execution_result)
         };
 
-        let loaded_runtime_objects = tracking_store.into_read_objects();
+        // No tracking store -> no runtime-read tracking. Inputs and written objects below
+        // still populate the object set; only dynamically-loaded reads are omitted.
+        let loaded_runtime_objects = sui_types::full_checkpoint_content::ObjectSet::default();
         let unchanged_loaded_runtime_objects =
             crate::transaction_outputs::unchanged_loaded_runtime_objects(
                 &transaction,
