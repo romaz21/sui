@@ -139,6 +139,7 @@ impl executor::Executor for Executor {
         transaction_signer: SuiAddress,
         transaction_digest: TransactionDigest,
         skip_all_checks: bool,
+        _track_results: bool,
     ) -> (
         InnerTemporaryStore,
         SuiGasStatus,

@@ -183,59 +183,110 @@ impl executor::Executor for Executor {
         transaction_signer: SuiAddress,
         transaction_digest: TransactionDigest,
         skip_all_checks: bool,
+        track_results: bool,
     ) -> (
         InnerTemporaryStore,
         SuiGasStatus,
         TransactionEffects,
         Result<Vec<ExecutionResult>, ExecutionError>,
     ) {
-        let (inner_temp_store, gas_status, effects, _timings, result) = if skip_all_checks {
-            execute_transaction_to_effects::<execution_mode::DevInspect<true>>(
-                store,
-                input_objects,
-                // TODO: Support system object versions for dev-inspect.
-                BTreeMap::new(),
-                gas,
-                gas_status,
-                transaction_kind,
-                rewritten_inputs,
-                transaction_signer,
-                transaction_digest,
-                &self.0,
-                epoch_id,
-                epoch_timestamp_ms,
-                protocol_config,
-                metrics,
-                enable_expensive_checks,
-                execution_params,
-                &mut None,
-            )
+        if track_results {
+            let (inner_temp_store, gas_status, effects, _timings, result) = if skip_all_checks {
+                execute_transaction_to_effects::<execution_mode::DevInspect<true>>(
+                    store,
+                    input_objects,
+                    // TODO: Support system object versions for dev-inspect.
+                    BTreeMap::new(),
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    rewritten_inputs,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            } else {
+                execute_transaction_to_effects::<execution_mode::DevInspect<false>>(
+                    store,
+                    input_objects,
+                    // TODO: Support system object versions for dev-inspect.
+                    BTreeMap::new(),
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    rewritten_inputs,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            };
+            if let Err(error) = &result {
+                log_execution_error(transaction_digest, error);
+            }
+            (inner_temp_store, gas_status, effects, result)
         } else {
-            execute_transaction_to_effects::<execution_mode::DevInspect<false>>(
-                store,
-                input_objects,
-                // TODO: Support system object versions for dev-inspect.
-                BTreeMap::new(),
-                gas,
-                gas_status,
-                transaction_kind,
-                rewritten_inputs,
-                transaction_signer,
-                transaction_digest,
-                &self.0,
-                epoch_id,
-                epoch_timestamp_ms,
-                protocol_config,
-                metrics,
-                enable_expensive_checks,
-                execution_params,
-                &mut None,
-            )
-        };
-        if let Err(error) = &result {
-            log_execution_error(transaction_digest, error);
+            let (inner_temp_store, gas_status, effects, _timings, result) = if skip_all_checks {
+                execute_transaction_to_effects::<execution_mode::FastDevInspect<true>>(
+                    store,
+                    input_objects,
+                    // TODO: Support system object versions for dev-inspect.
+                    BTreeMap::new(),
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    rewritten_inputs,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            } else {
+                execute_transaction_to_effects::<execution_mode::FastDevInspect<false>>(
+                    store,
+                    input_objects,
+                    // TODO: Support system object versions for dev-inspect.
+                    BTreeMap::new(),
+                    gas,
+                    gas_status,
+                    transaction_kind,
+                    rewritten_inputs,
+                    transaction_signer,
+                    transaction_digest,
+                    &self.0,
+                    epoch_id,
+                    epoch_timestamp_ms,
+                    protocol_config,
+                    metrics,
+                    enable_expensive_checks,
+                    execution_params,
+                    &mut None,
+                )
+            };
+            if let Err(error) = &result {
+                log_execution_error(transaction_digest, error);
+            }
+            (inner_temp_store, gas_status, effects, result.map(|_| vec![]))
         }
-        (inner_temp_store, gas_status, effects, result)
     }
 
     fn update_genesis_state(
