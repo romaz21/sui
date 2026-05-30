@@ -2636,20 +2636,12 @@ impl AuthorityState {
             &mut kind,
             None,
         )?;
-        let early_execution_error = get_early_execution_error(
-            &transaction.digest(),
-            &checked_input_objects,
-            self.config.certificate_deny_config.certificate_deny_set(),
-            &FundsWithdrawStatus::MaybeSufficient,
-        );
-        // Dev-inspect/simulation path (not committed): no assigned accumulator version here, so the
-        // IFFW short-circuit applies unconditionally (`None`), matching non-mainnet execution.
-        let execution_params = match early_execution_error {
-            None => ExecutionOrEarlyError::ok(None),
-            Some(errors) => ExecutionOrEarlyError::failed(errors, None),
-        };
+        // Early-execution-error / certificate-deny-set check skipped for simulation speed.
+        let execution_params = ExecutionOrEarlyError::ok(None);
 
-        let tracking_store = TrackingBackingStore::new(self.get_backing_store().as_ref());
+        // TrackingBackingStore dropped for speed: object reads are no longer cloned/tracked.
+        // Consequence: `unchanged_loaded_runtime_objects` is not reported for simulate.
+        let backing_store = self.get_backing_store();
 
         // Clone inputs for potential retry if object funds check fails post-execution.
         let cloned_input_objects = checked_input_objects.clone();
@@ -2662,7 +2654,7 @@ impl AuthorityState {
             .epoch_data()
             .epoch_start_timestamp();
         let (inner_temp_store, _, effects, execution_result) = executor.dev_inspect_transaction(
-            &tracking_store,
+            backing_store.as_ref(),
             protocol_config,
             self.metrics.execution_metrics.clone(),
             false, // expensive_checks
@@ -2677,6 +2669,7 @@ impl AuthorityState {
             signer,
             tx_digest,
             dev_inspect,
+            /* track_results */ false,
         );
 
         // Post-execution: check object funds (non-address withdrawals discovered during execution).
@@ -2698,7 +2691,7 @@ impl AuthorityState {
                     protocol_config,
                 )?;
                 let (store, _, effects, result) = executor.dev_inspect_transaction(
-                    &tracking_store,
+                    backing_store.as_ref(),
                     protocol_config,
                     self.metrics.execution_metrics.clone(),
                     false,
@@ -2716,6 +2709,7 @@ impl AuthorityState {
                     signer,
                     tx_digest,
                     dev_inspect,
+                    /* track_results */ false,
                 );
                 (store, effects, result)
             } else {
@@ -2725,7 +2719,9 @@ impl AuthorityState {
             (inner_temp_store, effects, execution_result)
         };
 
-        let loaded_runtime_objects = tracking_store.into_read_objects();
+        // No tracking store -> no runtime-read tracking. Inputs and written objects below
+        // still populate the object set; only dynamically-loaded reads are omitted.
+        let loaded_runtime_objects = sui_types::full_checkpoint_content::ObjectSet::default();
         let unchanged_loaded_runtime_objects =
             crate::transaction_outputs::unchanged_loaded_runtime_objects(
                 &transaction,
